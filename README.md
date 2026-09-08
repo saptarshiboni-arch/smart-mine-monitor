@@ -234,3 +234,193 @@ Open **`http://localhost:3000`** directly. The dashboard operates standalone wit
 - Warm industrial palette: `#F5F2EC` (Background), `#FFFFFF` (Card surface), `#EEEBE4` (Alt surface), `#292722` (Text), `#D8D3CA` (Borders).
 - Standard status indicators: Green (`#2D8A4E`), Amber (`#C4820E`), Red (`#C4362E`), Orange (`#D97706`).
 - Tabular figures and Inter typography for precise telemetry reading.
+
+---
+
+## 📡 7. Real Hardware Sensor Integration (ESP32 / Edge Gateways)
+
+MINEGUARD AI supports direct ingestion of live telemetry from physical microcontrollers (ESP32, ESP8266, Raspberry Pi, Arduino with Wi-Fi/LTE shields, LoRaWAN gateways) over standard HTTP/HTTPS JSON requests.
+
+### 🔄 End-to-End Data Pipeline
+```
+ESP32 / Microcontroller Edge Node
+       │  (Physical Telemetry: vibration, tilt, temp, moisture, displacement)
+       ▼  HTTP / HTTPS POST
+FastAPI Backend (/api/sensors/data bound to 0.0.0.0:8000)
+       │  (Expands 5 raw metrics -> 14-channel physics vector)
+       ▼  Direct Pipeline Inference
+Random Forest ML Model (/predict)
+       │  (Produces: NORMAL / WARNING / CRITICAL + confidence probabilities)
+       ▼  State Ingestion & Polling Loop (1.5s cadence)
+MineContext State Machine
+       │  (Updates live sensor nodes, risk gauges, evacuation triggers)
+       ▼  Real-Time UI Rendering
+Admin Dashboard (Map, KPI Cards, AI Prediction Page, Emergency HUD)
+```
+
+### 🎛️ Dual-Mode Operation (Simulation vs. Real Hardware)
+The dashboard provides seamless switching between **Virtual Simulation** and **Real Hardware Stream**:
+- **Simulation Mode (Default)**: Runs the internal physics simulator with nominal baseline drift and supports SIH 1-click test scenarios (`[Simulate Subsidence]`, `[Collapse T-12 & Reroute]`).
+- **ESP32 Hardware Mode**: Listens for live edge telemetry from physical nodes. The dashboard displays the real sensor readings, updates the 2D map node states, and runs live ML inference on the incoming hardware data.
+- **How to Switch**: Click the **Sim / ESP32** toggle button in the **TopBar** or the **Activate Real Hardware Mode** button on the **AI Prediction** page (`/ai-prediction`).
+
+---
+
+### 🌐 Ingestion Endpoints
+
+| Environment | Protocol | Endpoint URL | Binding |
+|---|---|---|---|
+| **Local Wi-Fi / LAN Testing** | `HTTP` | `http://<YOUR_COMPUTER_LOCAL_IP>:8000/api/sensors/data` | `0.0.0.0:8000` |
+| **Production / Cloud** | `HTTPS` | `https://<YOUR_DOMAIN>/api/sensors/data` | Reverse Proxy / SSL Port 443 |
+
+> **Find your computer's local IP on Windows**: Open PowerShell and run `ipconfig` (e.g. `192.168.1.100` or `10.0.0.x`). Ensure your ESP32 is connected to the same Wi-Fi network.
+
+---
+
+### 📥 Hardware Ingestion Specification
+
+#### Headers
+```http
+Content-Type: application/json
+X-API-Key: sih-mine-secret-key-2026   (Optional: for secured industrial deployments)
+```
+
+#### JSON Request Body Format
+```json
+{
+  "node_id": "ESP32_NODE_01",
+  "vibration": 0.05,
+  "tilt": 0.08,
+  "temperature": 27.0,
+  "moisture": 20.0,
+  "displacement": 0.2
+}
+```
+
+| Field | Type | Units | Nominal / Safe Range | Warning Range | Critical Range |
+|---|---|---|---|---|---|
+| `node_id` | `string` | ID tag | `ESP32_NODE_01`... | Any string identifier | Unique per sensor |
+| `vibration` | `float` | g or m/s² | `0.00` – `0.15` | `0.50` – `1.50` | `> 2.00` |
+| `tilt` | `float` | degrees (°) | `0.00` – `0.20` | `1.00` – `2.50` | `> 3.50` |
+| `temperature` | `float` | °Celsius | `20.0` – `32.0` | `35.0` – `42.0` | `> 45.0` |
+| `moisture` | `float` | % Relative | `10.0` – `30.0` | `40.0` – `60.0` | `> 70.0` |
+| `displacement` | `float` | mm | `0.00` – `0.50` | `5.00` – `12.00` | `> 15.00` |
+
+#### JSON Response Schema
+```json
+{
+  "node_id": "ESP32_NODE_01",
+  "timestamp": "2026-09-08T11:10:33.237756+00:00",
+  "sensor_data": {
+    "vibration": 0.05,
+    "tilt": 0.08,
+    "temperature": 27.0,
+    "moisture": 20.0,
+    "displacement": 0.2
+  },
+  "prediction": {
+    "risk": "NORMAL",
+    "confidence": 0.9856,
+    "probabilities": {
+      "NORMAL": 0.9856,
+      "WARNING": 0.0100,
+      "CRITICAL": 0.0044
+    },
+    "model_used": "Random Forest (Trained Joblib Bundle)"
+  }
+}
+```
+
+---
+
+### 💻 Testing with cURL / PowerShell
+
+#### 1. Send Normal Baseline Telemetry
+```bash
+curl -X POST "http://localhost:8000/api/sensors/data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "node_id": "ESP32_NODE_01",
+    "vibration": 0.05,
+    "tilt": 0.08,
+    "temperature": 27.0,
+    "moisture": 20.0,
+    "displacement": 0.2
+  }'
+```
+
+#### 2. Send Critical Subsidence Telemetry (Triggers Alarm)
+```bash
+curl -X POST "http://localhost:8000/api/sensors/data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "node_id": "ESP32_NODE_02",
+    "vibration": 2.45,
+    "tilt": 4.20,
+    "temperature": 48.0,
+    "moisture": 75.0,
+    "displacement": 18.5
+  }'
+```
+
+#### 3. View All Active Hardware Nodes
+```bash
+curl -X GET "http://localhost:8000/api/sensors/data"
+```
+
+---
+
+### 🔌 ESP32 Arduino C++ Code Example
+```cpp
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// Replace with your PC's LAN IP or production domain
+const char* serverUrl = "http://192.168.1.100:8000/api/sensors/data";
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected! IP: " + WiFi.localIP().toString());
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    // Read real sensors (MPU6050, LVDT, DS18B20, etc.)
+    float vibration = 0.06;
+    float tilt = 0.09;
+    float temperature = 27.4;
+    float moisture = 22.0;
+    float displacement = 0.35;
+
+    String json = "{\"node_id\":\"ESP32_NODE_01\","
+                  "\"vibration\":" + String(vibration, 3) + ","
+                  "\"tilt\":" + String(tilt, 3) + ","
+                  "\"temperature\":" + String(temperature, 1) + ","
+                  "\"moisture\":" + String(moisture, 1) + ","
+                  "\"displacement\":" + String(displacement, 2) + "}";
+
+    int httpResponseCode = http.POST(json);
+    if (httpResponseCode > 0) {
+      String response = http.getString();
+      Serial.println("Server Response: " + response);
+    } else {
+      Serial.printf("Error occurred: %s\n", http.errorToString(httpResponseCode).c_str());
+    }
+    http.end();
+  }
+  delay(2000); // 2-second telemetry cadence
+}
+```
+

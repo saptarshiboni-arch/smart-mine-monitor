@@ -1,4 +1,4 @@
-﻿// MINEGUARD AI — ML Integration Adapter & Hardware Telemetry Bridge
+// MINEGUARD AI — ML Integration Adapter & Hardware Telemetry Bridge
 // Prepares physical sensor payload matching the Kaggle/ESP32 14-feature architecture
 // Handles live connection status, backend health check, and model inference fallback.
 
@@ -146,3 +146,59 @@ export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
   }
   return null;
 }
+
+/**
+ * Polls the backend hardware registry for latest ESP32 / gateway telemetry packets.
+ */
+export async function fetchHardwareSensorData(baseUrl = DEFAULT_BACKEND_URL) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1800);
+
+    const res = await fetch(`${baseUrl}/api/sensors/data`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    // Offline or unreachable
+  }
+  return null;
+}
+
+/**
+ * Sends a real or simulated hardware reading to /api/sensors/data
+ */
+export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_URL, apiKey = null) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['X-API-Key'] = apiKey;
+
+  const res = await fetch(`${baseUrl}/api/sensors/data`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (res.ok) {
+    return await res.json();
+  }
+  const errData = await res.json().catch(() => ({}));
+  throw new Error(errData.detail || `HTTP ${res.status}`);
+}
+
+/**
+ * Clears all active hardware sensor nodes from the backend
+ */
+export async function resetHardwareSensorNodes(baseUrl = DEFAULT_BACKEND_URL) {
+  try {
+    const res = await fetch(`${baseUrl}/api/sensors/data`, { method: 'DELETE' });
+    if (res.ok) return await res.json();
+  } catch (err) {}
+  return null;
+}
+

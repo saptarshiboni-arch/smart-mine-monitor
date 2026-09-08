@@ -1,0 +1,36 @@
+{
+  "ESP32_NODE_01": {
+    "node_id": "ESP32_NODE_01",
+    "timestamp": "2026-09-08T12:30:00Z",
+    "sensor_data": {
+      "vibration": 0.05,
+      "tilt": 0.08,
+      "temperature": 27.0,
+      "moisture": 20.0,
+      "displacement": 0.2
+    },
+    "prediction": {
+      "risk": "NORMAL",
+      "confidence": 0.8788,
+      "probabilities": {
+        "CRITICAL": 0.031,
+        "NORMAL": 0.8788,
+        "WARNING": 0.0902
+      },
+      "model_used": "Random Forest"
+    },
+    "last_received": "2026-09-08T11:05:22.443511+00:00",
+    "history": [
+      {
+        "timestamp": "2026-09-08T12:30:00Z",
+        "vibration": 0.05,
+        "tilt": 0.08,
+        "temperature": 27.0,
+        "moisture": 20.0,
+        "displacement": 0.2,
+        "risk": "NORMAL",
+        "confidence": 0.8788
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useMine } from '../context/MineContext';
 import RiskGauge from '../components/ui/RiskGauge';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -28,12 +28,70 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  Radio,
+  Wifi,
+  Send,
+  Trash2,
+  Terminal,
 } from 'lucide-react';
 
 export default function AIPredictionPage() {
-  const { aiPrediction, setIsSensorSimulatorOpen, isDarkMode, mlBackendState } = useMine();
+  const {
+    aiPrediction,
+    setIsSensorSimulatorOpen,
+    isDarkMode,
+    mlBackendState,
+    dataSource = 'simulation',
+    setDataSource,
+    hardwareNodes = {},
+    hardwareStatus = {},
+    sendHardwareTelemetry,
+    resetHardwareSensorNodes,
+  } = useMine();
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showArchitectureGuide, setShowArchitectureGuide] = useState(false);
+  const [showCurlModal, setShowCurlModal] = useState(false);
+  const [injectingRisk, setInjectingRisk] = useState(null);
+
+  const handleInjectSampleNode = async (riskType) => {
+    setInjectingRisk(riskType);
+    try {
+      let payload;
+      if (riskType === 'CRITICAL') {
+        payload = {
+          node_id: 'ESP32_NODE_03',
+          vibration: 2.65,
+          tilt: 4.1,
+          temperature: 46.2,
+          moisture: 72.0,
+          displacement: 19.4,
+        };
+      } else if (riskType === 'WARNING') {
+        payload = {
+          node_id: 'ESP32_NODE_02',
+          vibration: 0.92,
+          tilt: 1.8,
+          temperature: 39.5,
+          moisture: 48.0,
+          displacement: 8.5,
+        };
+      } else {
+        payload = {
+          node_id: 'ESP32_NODE_01',
+          vibration: 0.04,
+          tilt: 0.05,
+          temperature: 26.8,
+          moisture: 19.5,
+          displacement: 0.25,
+        };
+      }
+      await sendHardwareTelemetry(payload);
+    } catch (e) {
+      console.error('Failed to inject sample hardware packet', e);
+    } finally {
+      setInjectingRisk(null);
+    }
+  };
 
   const riskScore = aiPrediction?.overallScore || 18;
   const classification = aiPrediction?.riskLevel || 'SAFE';
@@ -171,6 +229,184 @@ export default function AIPredictionPage() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Real Hardware Sensor Telemetry & ESP32 Ingestion Gateway */}
+      <div className="card p-5 bg-mine-surface border border-mine-border shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mine-border pb-3">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-lg ${dataSource === 'hardware' ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400' : 'bg-mine-surface-alt text-mine-text-secondary'}`}>
+              <Radio className={`h-5 w-5 ${dataSource === 'hardware' ? 'animate-pulse' : ''}`} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold tracking-tight text-mine-text-primary">
+                  ESP32 / Edge Hardware Ingestion Gateway
+                </h2>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                  dataSource === 'hardware'
+                    ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
+                    : 'bg-mine-surface-alt text-mine-text-secondary border border-mine-border'
+                }`}>
+                  <Wifi className="h-3 w-3" />
+                  {dataSource === 'hardware' ? 'LIVE HARDWARE STREAMING ACTIVE' : 'SIMULATION MODE (HARDWARE LISTENING)'}
+                </span>
+              </div>
+              <p className="text-xs text-mine-text-secondary mt-0.5">
+                Ingestion Endpoint: <code className="font-mono text-xs bg-mine-surface-alt px-1 py-0.5 rounded border border-mine-border text-cyan-600 dark:text-cyan-400">POST /api/sensors/data</code> • Port: 8000
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDataSource(dataSource === 'hardware' ? 'simulation' : 'hardware')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold transition shadow-sm ${
+                dataSource === 'hardware'
+                  ? 'bg-status-safe text-white hover:opacity-90'
+                  : 'bg-cyan-600 text-white hover:bg-cyan-700'
+              }`}
+            >
+              {dataSource === 'hardware' ? 'Switch to Virtual Simulation' : 'Activate Real Hardware Mode'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCurlModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-mine-surface border border-mine-border text-mine-text-primary hover:bg-mine-surface-alt transition shadow-card"
+            >
+              <Terminal className="h-3.5 w-3.5 text-status-info" />
+              ESP32 / curl Docs
+            </button>
+          </div>
+        </div>
+
+        {/* Live Hardware Gateway Stats & Quick Injectors */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-4 text-mine-text-secondary">
+            <span>Connected Nodes: <strong className="text-mine-text-primary font-mono">{Object.keys(hardwareNodes).length}</strong></span>
+            <span>•</span>
+            <span>Last Telemetry: <strong className="text-mine-text-primary font-mono">{hardwareStatus?.lastReceived || 'No packets received yet'}</strong></span>
+            <span>•</span>
+            <span>Overall Fleet Risk: <strong className={`font-mono ${
+              hardwareStatus?.overallRisk === 'CRITICAL'
+                ? 'text-status-critical'
+                : hardwareStatus?.overallRisk === 'WARNING'
+                ? 'text-status-warning'
+                : 'text-status-safe'
+            }`}>{hardwareStatus?.overallRisk || 'NORMAL'}</strong></span>
+          </div>
+
+          {/* Injector Buttons for testing real hardware flow */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-mine-text-secondary font-medium mr-1">Test Hardware Ingest:</span>
+            <button
+              type="button"
+              disabled={injectingRisk !== null}
+              onClick={() => handleInjectSampleNode('NORMAL')}
+              className="px-2 py-1 rounded text-[11px] font-semibold bg-status-safe-bg text-status-safe border border-status-safe/40 hover:bg-status-safe-bg/80 transition disabled:opacity-50"
+              title="Send normal baseline packet for ESP32_NODE_01"
+            >
+              + Normal Node
+            </button>
+            <button
+              type="button"
+              disabled={injectingRisk !== null}
+              onClick={() => handleInjectSampleNode('WARNING')}
+              className="px-2 py-1 rounded text-[11px] font-semibold bg-status-warning-bg text-status-warning border border-status-warning/40 hover:bg-status-warning-bg/80 transition disabled:opacity-50"
+              title="Send warning packet for ESP32_NODE_02"
+            >
+              + Warning Node
+            </button>
+            <button
+              type="button"
+              disabled={injectingRisk !== null}
+              onClick={() => handleInjectSampleNode('CRITICAL')}
+              className="px-2 py-1 rounded text-[11px] font-semibold bg-status-critical-bg text-status-critical border border-status-critical/40 hover:bg-status-critical-bg/80 transition disabled:opacity-50"
+              title="Send critical subsidence packet for ESP32_NODE_03"
+            >
+              + Critical Node
+            </button>
+            {Object.keys(hardwareNodes).length > 0 && (
+              <button
+                type="button"
+                onClick={resetHardwareSensorNodes}
+                className="p-1 rounded text-mine-text-secondary hover:text-status-critical transition"
+                title="Clear received hardware nodes"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Nodes Grid / Table */}
+        {Object.keys(hardwareNodes).length === 0 ? (
+          <div className="p-6 rounded-lg border border-dashed border-mine-border text-center bg-mine-surface-alt/40">
+            <Radio className="h-8 w-8 text-mine-text-secondary/50 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-mine-text-primary">No Real Hardware Sensor Nodes Connected</p>
+            <p className="text-[11px] text-mine-text-secondary mt-1 max-w-md mx-auto">
+              Send an HTTP POST request to <code className="font-mono text-[10px] bg-mine-surface px-1 py-0.5 rounded border border-mine-border">http://&lt;SERVER_IP&gt;:8000/api/sensors/data</code> with sensor readings from your ESP32, or click the test buttons above to simulate hardware packets.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-mine-surface-alt border-b border-mine-border text-mine-text-secondary font-mono text-[11px]">
+                <tr>
+                  <th className="py-2 px-3">Node ID</th>
+                  <th className="py-2 px-3">Vibration</th>
+                  <th className="py-2 px-3">Tilt</th>
+                  <th className="py-2 px-3">Temp</th>
+                  <th className="py-2 px-3">Moisture</th>
+                  <th className="py-2 px-3">Displacement</th>
+                  <th className="py-2 px-3">ML Risk Assessment</th>
+                  <th className="py-2 px-3">Confidence</th>
+                  <th className="py-2 px-3">Last Ping</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-mine-border">
+                {Object.values(hardwareNodes).map((node) => {
+                  const risk = node.prediction?.risk || 'NORMAL';
+                  const conf = node.prediction?.confidence
+                    ? (node.prediction.confidence * 100).toFixed(1) + '%'
+                    : '--';
+                  return (
+                    <tr key={node.node_id} className="hover:bg-mine-surface-alt/50 transition">
+                      <td className="py-2 px-3 font-mono font-bold text-mine-text-primary flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${risk === 'CRITICAL' ? 'bg-status-critical animate-ping' : risk === 'WARNING' ? 'bg-status-warning animate-pulse' : 'bg-status-safe'}`} />
+                        {node.node_id}
+                      </td>
+                      <td className="py-2 px-3 font-mono">{node.sensor_data?.vibration ?? '--'} g</td>
+                      <td className="py-2 px-3 font-mono">{node.sensor_data?.tilt ?? '--'} °</td>
+                      <td className="py-2 px-3 font-mono">{node.sensor_data?.temperature ?? '--'} °C</td>
+                      <td className="py-2 px-3 font-mono">{node.sensor_data?.moisture ?? '--'} %</td>
+                      <td className="py-2 px-3 font-mono font-bold text-mine-text-primary">
+                        {node.sensor_data?.displacement ?? '--'} mm
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                          risk === 'CRITICAL'
+                            ? 'bg-status-critical-bg text-status-critical border border-status-critical/40'
+                            : risk === 'WARNING'
+                            ? 'bg-status-warning-bg text-status-warning border border-status-warning/40'
+                            : 'bg-status-safe-bg text-status-safe border border-status-safe/40'
+                        }`}>
+                          {risk}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 font-mono">{conf}</td>
+                      <td className="py-2 px-3 font-mono text-[11px] text-mine-text-secondary">
+                        {node.timestamp ? new Date(node.timestamp).toLocaleTimeString('en-IN') : (node.last_received || '--')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -404,6 +640,110 @@ export default function AIPredictionPage() {
                 className="px-4 py-1.5 rounded text-xs font-semibold bg-status-attention text-mine-surface hover:opacity-90"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ESP32 Hardware Integration & cURL Docs Modal */}
+      {showCurlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-mine-surface border border-mine-border rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-mine-border pb-3">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-5 w-5 text-status-info" />
+                <h3 className="text-base font-bold text-mine-text-primary">
+                  ESP32 / Microcontroller Integration Quickstart
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCurlModal(false)}
+                className="text-xs px-2 py-1 rounded bg-mine-surface-alt border border-mine-border text-mine-text-secondary hover:text-mine-text-primary"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-mine-text-secondary">
+              <p className="leading-relaxed">
+                Connect real ESP32 microcontrollers or edge gateways over Wi-Fi/LAN or cellular/LTE. The backend receives raw physical telemetry, expands it into the 14-feature physics vector, and invokes the trained ML Random Forest model.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 rounded bg-mine-surface-alt border border-mine-border space-y-1">
+                  <span className="font-bold text-mine-text-primary">Local Wi-Fi / LAN Testing:</span>
+                  <code className="block font-mono text-[11px] text-cyan-600 dark:text-cyan-400 select-all">
+                    http://&lt;COMPUTER_LOCAL_IP&gt;:8000/api/sensors/data
+                  </code>
+                  <span className="text-[10px] block text-mine-text-secondary">Bind: 0.0.0.0 (Port 8000)</span>
+                </div>
+                <div className="p-3 rounded bg-mine-surface-alt border border-mine-border space-y-1">
+                  <span className="font-bold text-mine-text-primary">Cloud / Production HTTPS:</span>
+                  <code className="block font-mono text-[11px] text-cyan-600 dark:text-cyan-400 select-all">
+                    https://&lt;YOUR_DOMAIN&gt;/api/sensors/data
+                  </code>
+                  <span className="text-[10px] block text-mine-text-secondary">Supports SSL/TLS and optional X-API-Key</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="font-bold text-mine-text-primary block mb-1">1. Test with cURL (Windows PowerShell / Bash):</span>
+                <div className="rounded bg-mine-surface-alt p-3 border border-mine-border font-mono text-[11px] text-mine-text-primary overflow-x-auto">
+                  <pre>{`curl -X POST "http://localhost:8000/api/sensors/data" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "node_id": "ESP32_NODE_01",
+    "vibration": 0.05,
+    "tilt": 0.08,
+    "temperature": 27.0,
+    "moisture": 20.0,
+    "displacement": 0.2
+  }'`}</pre>
+                </div>
+              </div>
+
+              <div>
+                <span className="font-bold text-mine-text-primary block mb-1">2. ESP32 Arduino C++ Snippet:</span>
+                <div className="rounded bg-mine-surface-alt p-3 border border-mine-border font-mono text-[11px] text-mine-text-primary overflow-x-auto">
+                  <pre>{`#include <WiFi.h>
+#include <HTTPClient.h>
+
+const char* serverUrl = "http://192.168.1.100:8000/api/sensors/data";
+
+void sendTelemetry(float vib, float tilt, float temp, float moist, float disp) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    String json = "{\\"node_id\\":\\"ESP32_NODE_01\\","
+                  "\\"vibration\\":" + String(vib, 3) + ","
+                  "\\"tilt\\":" + String(tilt, 3) + ","
+                  "\\"temperature\\":" + String(temp, 1) + ","
+                  "\\"moisture\\":" + String(moist, 1) + ","
+                  "\\"displacement\\":" + String(disp, 2) + "}";
+
+    int httpCode = http.POST(json);
+    if (httpCode > 0) {
+      String response = http.getString();
+      Serial.println(response); // Prediction: NORMAL / WARNING / CRITICAL
+    }
+    http.end();
+  }
+}`}</pre>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-mine-border">
+              <button
+                type="button"
+                onClick={() => setShowCurlModal(false)}
+                className="px-4 py-1.5 rounded text-xs font-semibold bg-status-info text-white hover:opacity-90"
+              >
+                Got It
               </button>
             </div>
           </div>

@@ -6,7 +6,14 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { createSimulationEngine } from '../services/simulationEngine.js';
 import { audioSynth } from '../utils/audioSynth.js';
-import { checkMLBackendHealth, queryMLBackend, buildMLTelemetryPayload } from '../services/mlAdapter.js';
+import {
+  checkMLBackendHealth,
+  queryMLBackend,
+  buildMLTelemetryPayload,
+  fetchHardwareSensorData,
+  sendHardwareTelemetry,
+  resetHardwareSensorNodes,
+} from '../services/mlAdapter.js';
 import { setLiveMLPrediction } from '../services/aiPrediction.js';
 import { MINE_TUNNELS, MINE_NODES } from '../data/mineData.js';
 import {
@@ -57,6 +64,22 @@ export const MineProvider = ({ children }) => {
     return 'light';
   });
   const [toasts, setToasts] = useState([]);
+
+  // Data Source Engine: 'simulation' | 'hardware'
+  const [dataSource, setDataSourceState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('mineguard_data_source') || 'simulation';
+    }
+    return 'simulation';
+  });
+
+  const [hardwareNodes, setHardwareNodes] = useState({});
+  const [hardwareStatus, setHardwareStatus] = useState({
+    isConnected: false,
+    lastReceived: null,
+    totalNodes: 0,
+    overallRisk: 'NORMAL',
+  });
 
   // Dynamic Map State (Default CAD Seam 3 or Custom Uploaded Blueprint Map)
   const [activeMap, setActiveMap] = useState(() => loadSavedCustomMap() || getDefaultMineMap());
@@ -137,6 +160,21 @@ export const MineProvider = ({ children }) => {
   const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const setDataSource = useCallback((source) => {
+    const next = source === 'hardware' ? 'hardware' : 'simulation';
+    setDataSourceState(next);
+    try {
+      localStorage.setItem('mineguard_data_source', next);
+    } catch (e) {}
+    addToast({
+      title: next === 'hardware' ? 'Real Hardware Mode Active' : 'Simulation Mode Active',
+      message: next === 'hardware'
+        ? 'Dashboard is now receiving live telemetry from ESP32 nodes via /api/sensors/data.'
+        : 'Dashboard reverted to virtual physics simulation mode.',
+      type: 'info',
+    });
+  }, [addToast]);
 
   // ─── Custom Blueprint Map Actions ────────────────────────────────────
   const setCustomActiveMap = useCallback((newMap) => {
@@ -350,17 +388,118 @@ export const MineProvider = ({ children }) => {
   // ─── Simulation Tick (2s) ─────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
-      engine.tick();
-      setMineState(engine.getState());
+      if (dataSource === 'simulation') {
+        engine.tick();
+        setMineState(engine.getState());
+      }
     }, 2000);
     return () => clearInterval(interval);
-  }, [engine]);
+  }, [engine, dataSource]);
+
+  // ─── Real-Time Hardware Sensor Polling Bridge (1.5s cadence) ────────
+  useEffect(() => {
+    let isSubscribed = true;
+
+    const pollHardware = async () => {
+      const hwData = await fetchHardwareSensorData();
+      if (!isSubscribed) return;
+
+      if (hwData && hwData.nodes) {
+        setHardwareNodes(hwData.nodes);
+        const nodeCount = hwData.total_nodes || Object.keys(hwData.nodes).length;
+        setHardwareStatus({
+          isConnected: true,
+          lastReceived: new Date().toLocaleTimeString('en-IN'),
+          totalNodes: nodeCount,
+          overallRisk: hwData.overall_risk || 'NORMAL',
+        });
+
+        // In 'hardware' mode with active hardware nodes:
+        if (dataSource === 'hardware' && nodeCount > 0) {
+          const allNodes = Object.values(hwData.nodes);
+
+          allNodes.forEach((node, index) => {
+            const numMatch = node.node_id.match(/\d+/);
+            const num = numMatch ? parseInt(numMatch[0], 10) : (index + 1);
+            const targetSensorId = node.node_id.startsWith('S-')
+              ? node.node_id
+              : `S-${String(((num - 1) % 24) + 1).padStart(2, '0')}`;
+
+            const sData = node.sensor_data || {};
+            if (sData.displacement !== undefined) engine.overrideSensorValue(targetSensorId, 'displacement', sData.displacement);
+            if (sData.tilt !== undefined) engine.overrideSensorValue(targetSensorId, 'tilt', sData.tilt);
+            if (sData.vibration !== undefined) engine.overrideSensorValue(targetSensorId, 'vibration', sData.vibration);
+            if (sData.temperature !== undefined) engine.overrideSensorValue(targetSensorId, 'temperature', sData.temperature);
+            if (sData.moisture !== undefined) engine.overrideSensorValue(targetSensorId, 'humidity', sData.moisture);
+
+            const sensorObj = engine.getState().sensors?.find(s => s.id === targetSensorId);
+            if (sensorObj) {
+              sensorObj.isHardware = true;
+              sensorObj.hardwareNodeId = node.node_id;
+              sensorObj.hardwareRisk = node.prediction?.risk;
+              sensorObj.hardwareConfidence = node.prediction?.confidence;
+              sensorObj.lastReceived = node.timestamp || node.last_received;
+              if (node.prediction?.risk === 'CRITICAL') {
+                sensorObj.status = 'CRITICAL';
+                sensorObj.riskScore = 95;
+              } else if (node.prediction?.risk === 'WARNING') {
+                sensorObj.status = 'WARNING';
+                sensorObj.riskScore = 65;
+              } else {
+                sensorObj.status = 'SAFE';
+                sensorObj.riskScore = 15;
+              }
+            }
+          });
+
+          // Identify highest risk node
+          const criticalNode = allNodes.find(n => n.prediction?.risk === 'CRITICAL');
+          const warningNode = allNodes.find(n => n.prediction?.risk === 'WARNING');
+          const primaryNode = criticalNode || warningNode || allNodes[0];
+
+          if (primaryNode && primaryNode.prediction) {
+            setLiveMLPrediction({
+              risk_level: primaryNode.prediction.risk,
+              confidence: primaryNode.prediction.confidence,
+              probabilities: primaryNode.prediction.probabilities,
+              model_used: primaryNode.prediction.model_used || 'Random Forest (ESP32 Ingestion)',
+              node_id: primaryNode.node_id,
+              timestamp: primaryNode.timestamp,
+            });
+
+            // Trigger siren if any node enters CRITICAL
+            if (criticalNode && !mineState.sirenActive) {
+              setMineState(prev => ({ ...prev, sirenActive: true, emergencyModeActive: true }));
+              audioSynth.playAlarm();
+            }
+          }
+
+          setMineState(engine.getState());
+        }
+      } else {
+        setHardwareStatus(prev => ({
+          ...prev,
+          isConnected: false,
+        }));
+      }
+    };
+
+    pollHardware();
+    const hwInterval = setInterval(pollHardware, 1500);
+    return () => {
+      isSubscribed = false;
+      clearInterval(hwInterval);
+    };
+  }, [engine, dataSource, mineState.sirenActive]);
 
   // ─── Async ML Model Polling Loop (Option 2: Non-blocking 5s cadence) ──
   useEffect(() => {
     let isSubscribed = true;
 
     const pollMLModel = async () => {
+      // In hardware mode, the hardware polling bridge already handles live inference
+      if (dataSource === 'hardware') return;
+
       const health = await checkMLBackendHealth();
       if (!isSubscribed) return;
 
@@ -405,7 +544,7 @@ export const MineProvider = ({ children }) => {
       isSubscribed = false;
       clearInterval(mlInterval);
     };
-  }, [engine]);
+  }, [engine, dataSource]);
 
   // ─── Audio sync ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -697,6 +836,15 @@ export const MineProvider = ({ children }) => {
     logoutAdmin,
     activeMap,
     isCustomMapActive,
+
+    // Real Hardware Telemetry Layer
+    dataSource,
+    isHardwareMode: dataSource === 'hardware',
+    setDataSource,
+    hardwareNodes,
+    hardwareStatus,
+    sendHardwareTelemetry,
+    resetHardwareSensorNodes,
 
     // Actions
     activateMap,

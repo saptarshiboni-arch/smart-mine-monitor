@@ -37,7 +37,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from datetime import datetime, timezone
 from typing import Dict, Optional, Any
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
@@ -214,5 +214,202 @@ def predict_sensor_risk(payload: SensorReadingPayload):
         )
 
 
+# -----------------------------------------------------------------------------
+# DEDICATED REAL HARDWARE SENSOR INGESTION (/api/sensors/data)
+# -----------------------------------------------------------------------------
+
+import json
+import shutil
+import os
+
+DATA_DIR = Path(PROJECT_ROOT) / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+HARDWARE_NODES_FILE = DATA_DIR / "hardware_nodes.json"
+
+
+def load_hardware_nodes() -> Dict[str, Dict]:
+    if not HARDWARE_NODES_FILE.exists():
+        return {}
+    try:
+        with open(HARDWARE_NODES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_hardware_node_record(node_id: str, record: Dict):
+    nodes = load_hardware_nodes()
+    existing = nodes.get(node_id, {})
+    history = existing.get("history", [])
+
+    history.append({
+        "timestamp": record.get("timestamp"),
+        "vibration": record["sensor_data"].get("vibration"),
+        "tilt": record["sensor_data"].get("tilt"),
+        "temperature": record["sensor_data"].get("temperature"),
+        "moisture": record["sensor_data"].get("moisture"),
+        "displacement": record["sensor_data"].get("displacement"),
+        "risk": record["prediction"].get("risk"),
+        "confidence": record["prediction"].get("confidence"),
+    })
+
+    record["history"] = history[-30:]
+    nodes[node_id] = record
+
+    temp_file = str(HARDWARE_NODES_FILE) + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(nodes, f, indent=2, ensure_ascii=False)
+    shutil.move(temp_file, str(HARDWARE_NODES_FILE))
+
+
+@app.post("/api/sensors/data", tags=["Hardware Ingestion"])
+def ingest_hardware_sensor_data(
+    payload: SensorReadingPayload,
+    x_api_key: Optional[str] = Header(None)
+):
+    """
+    Dedicated Real-Time Hardware Sensor Ingestion Endpoint for ESP32 and LoRa Gateways.
+    Accepts JSON sensor telemetry, converts to model format, executes ML risk inference,
+    persists node state, and returns standardized response.
+    """
+    # 1. Optional API Key verification
+    configured_key = os.getenv("MINEGUARD_API_KEY")
+    if configured_key and x_api_key != configured_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Missing or invalid X-API-Key header"
+        )
+
+    # 2. Validation: Ensure at least one physical sensor measurement exists
+    has_metric = any(v is not None for v in [
+        payload.vibration, payload.tilt, payload.temperature,
+        payload.moisture, payload.displacement, payload.acc_x_ms2,
+        payload.ppv_mms, payload.temperature_c
+    ])
+    if not has_metric:
+        raise HTTPException(
+            status_code=422,
+            detail="Malformed sensor data: Payload contains no measurable physical sensor telemetry."
+        )
+
+    # Validate physical constraints
+    if payload.vibration is not None and (payload.vibration < 0 or payload.vibration > 150):
+        raise HTTPException(status_code=422, detail="Validation error: vibration must be between 0 and 150 m/s2")
+    if payload.displacement is not None and (payload.displacement < 0 or payload.displacement > 1000):
+        raise HTTPException(status_code=422, detail="Validation error: displacement must be between 0 and 1000 mm")
+    if payload.temperature is not None and (payload.temperature < -50 or payload.temperature > 120):
+        raise HTTPException(status_code=422, detail="Validation error: temperature must be between -50 and 120 °C")
+    if payload.moisture is not None and (payload.moisture < 0 or payload.moisture > 100):
+        raise HTTPException(status_code=422, detail="Validation error: moisture must be between 0 and 100 %")
+
+    # 3. Normalize node_id and timestamp
+    node_id = (payload.node_id or "ESP32_NODE_01").strip()
+    ts = payload.timestamp or datetime.now(timezone.utc).isoformat()
+    payload.node_id = node_id
+    payload.timestamp = ts
+
+    # 4. Predict via existing ML predictor
+    try:
+        predictor = get_predictor()
+        sensor_dict = {k: v for k, v in payload.model_dump().items() if v is not None}
+        if "vibration" not in sensor_dict and "acc_x_ms2" not in sensor_dict:
+            sensor_dict["vibration"] = 0.05
+        pred_res = predictor.predict(sensor_dict)
+    except Exception as err:
+        print(f"[Hardware Ingest Error] ML prediction failure: {err}")
+        vib_val = payload.vibration or 0.05
+        fallback_risk = "CRITICAL" if vib_val >= 0.8 else ("WARNING" if vib_val >= 0.3 else "NORMAL")
+        pred_res = {
+            "risk_level": fallback_risk,
+            "confidence": 0.95,
+            "probabilities": {fallback_risk: 0.95},
+            "model_used": "Calibrated Geotechnical Fallback (Service Exception)"
+        }
+
+    risk_label = str(pred_res.get("risk_level", "NORMAL")).upper()
+    if risk_label == "SAFE":
+        risk_label = "NORMAL"
+
+    confidence = round(float(pred_res.get("confidence", 0.95)), 4)
+
+    sensor_data_dict = {
+        "vibration": round(payload.vibration, 4) if payload.vibration is not None else 0.05,
+        "tilt": round(payload.tilt, 4) if payload.tilt is not None else 0.0,
+        "temperature": round(payload.temperature, 2) if payload.temperature is not None else 28.0,
+        "moisture": round(payload.moisture, 2) if payload.moisture is not None else 20.0,
+        "displacement": round(payload.displacement, 4) if payload.displacement is not None else 0.2,
+    }
+
+    # 5. Persist record in node registry
+    node_record = {
+        "node_id": node_id,
+        "timestamp": ts,
+        "sensor_data": sensor_data_dict,
+        "prediction": {
+            "risk": risk_label,
+            "confidence": confidence,
+            "probabilities": pred_res.get("probabilities", {}),
+            "model_used": pred_res.get("model_used", "Random Forest"),
+        },
+        "last_received": datetime.now(timezone.utc).isoformat(),
+    }
+    save_hardware_node_record(node_id, node_record)
+
+    # 6. Response format matching Requirement 2
+    return {
+        "node_id": node_id,
+        "timestamp": ts,
+        "sensor_data": sensor_data_dict,
+        "prediction": {
+            "risk": risk_label,
+            "confidence": confidence,
+            "probabilities": pred_res.get("probabilities", {}),
+            "model_used": pred_res.get("model_used", "Random Forest"),
+        }
+    }
+
+
+@app.get("/api/sensors/data", tags=["Hardware Ingestion"])
+def get_all_hardware_sensors():
+    """
+    Fetches all active hardware sensor nodes and overall risk status for dashboard live sync.
+    """
+    nodes = load_hardware_nodes()
+    overall_risk = "NORMAL"
+    for n in nodes.values():
+        r = n.get("prediction", {}).get("risk", "NORMAL")
+        if r == "CRITICAL":
+            overall_risk = "CRITICAL"
+        elif r == "WARNING" and overall_risk != "CRITICAL":
+            overall_risk = "WARNING"
+
+    return {
+        "status": "ok",
+        "total_nodes": len(nodes),
+        "overall_risk": overall_risk,
+        "nodes": nodes,
+        "last_updated": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.get("/api/sensors/data/{node_id}", tags=["Hardware Ingestion"])
+def get_single_hardware_sensor(node_id: str):
+    nodes = load_hardware_nodes()
+    if node_id not in nodes:
+        raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
+    return nodes[node_id]
+
+
+@app.delete("/api/sensors/data", tags=["Hardware Ingestion"])
+def reset_hardware_sensors():
+    if HARDWARE_NODES_FILE.exists():
+        try:
+            os.remove(HARDWARE_NODES_FILE)
+        except Exception:
+            pass
+    return {"status": "ok", "message": "All hardware node records cleared"}
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+

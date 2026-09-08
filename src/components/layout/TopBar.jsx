@@ -41,6 +41,10 @@ export default function TopBar() {
     setIsAddMinerModalOpen,
     activeMap,
     isCustomMapActive,
+    dataSource = 'simulation',
+    setDataSource,
+    hardwareNodes = {},
+    hardwareStatus = {},
   } = useMine();
 
   const navigate = useNavigate();
@@ -116,6 +120,43 @@ export default function TopBar() {
 
       {/* Center: SIH Demo Bar (1-Click Scenario Injectors) */}
       <div className="flex flex-wrap items-center gap-1.5 bg-mine-surface-alt/80 backdrop-blur-sm p-1 rounded-lg border border-mine-border">
+        {/* Source Mode Toggle: Simulation vs Real Hardware */}
+        <div className="flex items-center rounded-md p-0.5 bg-mine-surface border border-mine-border mr-1 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setDataSource('simulation')}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold transition ${
+              dataSource === 'simulation'
+                ? 'bg-status-safe text-white shadow-sm'
+                : 'text-mine-text-secondary hover:text-mine-text-primary'
+            }`}
+            title="Virtual physics simulation mode (nominal, subsidence, collapse triggers)"
+          >
+            <Sliders className="h-3 w-3" />
+            <span>Sim</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDataSource('hardware')}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold transition ${
+              dataSource === 'hardware'
+                ? 'bg-cyan-600 text-white shadow-sm'
+                : 'text-mine-text-secondary hover:text-mine-text-primary'
+            }`}
+            title="Real ESP32 hardware ingestion mode (/api/sensors/data)"
+          >
+            <Radio className={`h-3 w-3 ${dataSource === 'hardware' ? 'animate-pulse text-cyan-200' : ''}`} />
+            <span>ESP32</span>
+            {hardwareStatus?.totalNodes > 0 && (
+              <span className={`text-[9px] px-1 py-0.2 rounded-full font-mono font-bold ${
+                dataSource === 'hardware' ? 'bg-cyan-900/80 text-cyan-200' : 'bg-mine-surface-alt text-mine-text-secondary'
+              }`}>
+                {hardwareStatus.totalNodes}
+              </span>
+            )}
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={resetToNormal}
