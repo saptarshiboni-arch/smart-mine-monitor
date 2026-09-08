@@ -1,0 +1,17 @@
+{
+  "sample_id": "page10_0f0f1c53cb73",
+  "source_page": 10,
+  "blueprint_path": "blueprints/page10_0f0f1c53cb73.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "HISTORICAL",
+  "source_pdf": "digitalmap.pdf",
+  "description": "18339 Kellingley Colliery Beeston Seam Abandonment Plan",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 30,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

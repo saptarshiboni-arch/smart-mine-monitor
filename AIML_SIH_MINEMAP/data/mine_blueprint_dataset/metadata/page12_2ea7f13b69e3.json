@@ -1,0 +1,17 @@
+{
+  "sample_id": "page12_2ea7f13b69e3",
+  "source_page": 12,
+  "blueprint_path": "blueprints/page12_2ea7f13b69e3.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "HISTORICAL",
+  "source_pdf": "digitalmap.pdf",
+  "description": "Mine Plan with dense room-and-pillar workings",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 51,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

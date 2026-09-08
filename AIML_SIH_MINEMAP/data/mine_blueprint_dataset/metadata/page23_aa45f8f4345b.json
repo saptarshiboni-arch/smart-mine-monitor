@@ -1,0 +1,17 @@
+{
+  "sample_id": "page23_aa45f8f4345b",
+  "source_page": 23,
+  "blueprint_path": "blueprints/page23_aa45f8f4345b.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "HISTORICAL",
+  "source_pdf": "digitalmap.pdf",
+  "description": "Mine Plan with boundaries and pillars",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 24,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

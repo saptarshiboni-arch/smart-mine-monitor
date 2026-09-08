@@ -1,0 +1,17 @@
+{
+  "sample_id": "page11_87d135f2f0e6",
+  "source_page": 11,
+  "blueprint_path": "blueprints/page11_87d135f2f0e6.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "HISTORICAL",
+  "source_pdf": "digitalmap.pdf",
+  "description": "S2127 Lecbrannock Composite Plan",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 23,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

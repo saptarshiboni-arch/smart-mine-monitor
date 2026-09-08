@@ -1,0 +1,17 @@
+{
+  "sample_id": "page21_b9e6c8ceb53a",
+  "source_page": 21,
+  "blueprint_path": "blueprints/page21_b9e6c8ceb53a.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "HISTORICAL",
+  "source_pdf": "digitalmap.pdf",
+  "description": "10254 Knowehead Mine Plan - Scotland",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 20,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

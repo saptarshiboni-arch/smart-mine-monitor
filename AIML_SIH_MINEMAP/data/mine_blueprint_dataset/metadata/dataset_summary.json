@@ -1,0 +1,21 @@
+{
+  "total_pages_in_pdf": 42,
+  "total_samples_extracted": 21,
+  "historical_mine_plans": 13,
+  "reference_pages": 2,
+  "text_reference_pages": 4,
+  "auto_detected": 2,
+  "ground_truth_pairs": 0,
+  "verified_ground_truth": 0,
+  "pdf_title": "Understanding Mine Plans",
+  "pdf_author": "Jenny Cottam (Mining Remediation Authority)",
+  "extraction_dpi": 300,
+  "notes": [
+    "This PDF is an EDUCATIONAL REFERENCE document, NOT a paired training dataset.",
+    "It contains example mine plans with explanatory text and symbology guides.",
+    "NO ground truth digital maps are provided for any mine plan.",
+    "All extracted samples are classified as D_UNVERIFIED.",
+    "The mine plan images can be used for heuristic pipeline testing and evaluation.",
+    "For supervised training, manual annotation of tunnel masks is required."
+  ]
+}

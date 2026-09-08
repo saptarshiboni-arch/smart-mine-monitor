@@ -1,0 +1,13 @@
+{
+  "sample_id": "existing_verification_overlay",
+  "source_page": null,
+  "blueprint_path": "blueprints/existing_verification_overlay.png",
+  "map_path": null,
+  "resolution_dpi": null,
+  "width": 1200,
+  "height": 911,
+  "source_type": "EXISTING_DATASET",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "notes": "Deduplicated from original data/blueprints/verification_overlay.png"
+}

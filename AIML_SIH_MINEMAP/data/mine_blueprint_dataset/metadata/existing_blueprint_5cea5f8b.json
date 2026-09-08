@@ -1,0 +1,13 @@
+{
+  "sample_id": "existing_blueprint_5cea5f8b",
+  "source_page": null,
+  "blueprint_path": "blueprints/existing_blueprint_5cea5f8b.jpeg",
+  "map_path": null,
+  "resolution_dpi": null,
+  "width": 1500,
+  "height": 956,
+  "source_type": "EXISTING_DATASET",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "notes": "Deduplicated from original data/blueprints/blueprint_5cea5f8b.jpeg"
+}

@@ -1,0 +1,17 @@
+{
+  "sample_id": "page05_52c9eb55f919",
+  "source_page": 5,
+  "blueprint_path": "blueprints/page05_52c9eb55f919.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "AUTO_DETECTED",
+  "source_pdf": "digitalmap.pdf",
+  "description": "Page 5 - auto-detected content",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 1,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

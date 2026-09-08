@@ -1,0 +1,17 @@
+{
+  "epochs": 3,
+  "encoder": "resnet34",
+  "best_val_loss": 2.0102,
+  "history": {
+    "train_loss": [
+      2.155,
+      1.9329,
+      1.7806
+    ],
+    "val_loss": [
+      2.066,
+      2.0341,
+      2.0102
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "sample_id": "page16_a258c87cf915",
+  "source_page": 16,
+  "blueprint_path": "blueprints/page16_a258c87cf915.png",
+  "map_path": null,
+  "resolution_dpi": 300,
+  "width": 2481,
+  "height": 3509,
+  "source_type": "HISTORICAL",
+  "source_pdf": "digitalmap.pdf",
+  "description": "Mine Plan closeup",
+  "confidence": "UNVERIFIED",
+  "ground_truth_class": "D_UNVERIFIED",
+  "content_images_count": 1,
+  "has_text": true,
+  "notes": "Extracted from 'Understanding Mine Plans' by Jenny Cottam"
+}

@@ -63,6 +63,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── INTEGRATE AIML_SIH_MINEMAP TOPOLOGICAL PERCEPTION & ROUTING ROUTERS ──
+try:
+    import sys
+    minemap_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "AIML_SIH_MINEMAP"))
+    if minemap_dir not in sys.path:
+        sys.path.insert(0, minemap_dir)
+
+    from backend.api.blueprint import router as blueprint_ai_router
+    from backend.api.map import router as map_ai_router
+    from backend.api.routing import router as routing_ai_router
+    from backend.api.emergency import router as emergency_ai_router
+    from backend.api.simulation import router as simulation_ai_router
+    from backend.api.miners import router as miners_ai_router
+
+    app.include_router(blueprint_ai_router)
+    app.include_router(map_ai_router)
+    app.include_router(routing_ai_router)
+    app.include_router(emergency_ai_router)
+    app.include_router(simulation_ai_router)
+    app.include_router(miners_ai_router)
+    print("[AIML_SIH_MINEMAP] Mounted advanced topological perception & routing routers successfully.")
+except Exception as e:
+    print(f"[AIML_SIH_MINEMAP] Router mount note: {e}")
+
 class HardwareTelemetryInput(BaseModel):
     node_id: Optional[str] = Field("ESP32_DEFAULT_NODE", description="ID of edge gateway or sensor cluster")
     # 9 direct physical sensor channels
@@ -532,6 +556,22 @@ def get_single_hardware_sensor(node_id: str):
     if node_id not in nodes:
         raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
     return nodes[node_id]
+
+
+@app.delete("/api/sensors/data/{node_id}", tags=["Hardware Ingestion"])
+def delete_single_hardware_sensor(node_id: str):
+    """
+    Deletes a specific hardware sensor node by node_id.
+    """
+    nodes = load_hardware_nodes()
+    if node_id not in nodes:
+        raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
+    del nodes[node_id]
+    temp_file = str(HARDWARE_NODES_FILE) + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(nodes, f, indent=2, default=str)
+    shutil.move(temp_file, str(HARDWARE_NODES_FILE))
+    return {"status": "ok", "message": f"Hardware node '{node_id}' deleted", "remaining_nodes": len(nodes)}
 
 
 @app.delete("/api/sensors/data", tags=["Hardware Ingestion"])
