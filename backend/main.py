@@ -81,9 +81,12 @@ try:
     app.include_router(map_ai_router)
     app.include_router(routing_ai_router)
     app.include_router(emergency_ai_router)
-    app.include_router(simulation_ai_router)
-    app.include_router(miners_ai_router)
-    print("[AIML_SIH_MINEMAP] Mounted advanced topological perception & routing routers successfully.")
+    from fastapi.staticfiles import StaticFiles
+    minemap_data_dir = os.path.join(minemap_dir, "data")
+    if os.path.exists(minemap_data_dir):
+        app.mount("/data", StaticFiles(directory=minemap_data_dir), name="minemap_data")
+
+    print("[AIML_SIH_MINEMAP] Mounted advanced topological perception & routing routers and static /data successfully.")
 except Exception as e:
     print(f"[AIML_SIH_MINEMAP] Router mount note: {e}")
 

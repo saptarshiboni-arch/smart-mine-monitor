@@ -19,11 +19,13 @@ import {
   UploadCloud,
   ShieldCheck,
   FolderKanban,
+  Sparkles,
 } from 'lucide-react';
 
 const navItems = [
   { name: 'Command Dashboard', path: '/overview', icon: LayoutDashboard },
   { name: '2D Live Mine Map', path: '/mine-map', icon: Map },
+  { name: 'AI 9-Layer Perception', path: '/perception-studio', icon: Sparkles },
   { name: 'Blueprint → 2D Map AI', path: '/blueprint-upload', icon: UploadCloud },
   { name: 'Strata Sensors (24)', path: '/sensor-network', icon: Radio },
   { name: 'AI Prediction & XAI', path: '/ai-prediction', icon: BrainCircuit },

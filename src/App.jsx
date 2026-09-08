@@ -12,6 +12,7 @@ import Emergency from './pages/Emergency';
 import IncidentHistory from './pages/IncidentHistory';
 import BlueprintStudio from './pages/BlueprintStudio';
 import AdminPortal from './pages/AdminPortal';
+import TopologicalPerceptionPage from './pages/TopologicalPerceptionPage';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/overview" element={<Overview />} />
           <Route path="/mine-map" element={<MineMapPage />} />
+          <Route path="/perception-studio" element={<TopologicalPerceptionPage />} />
           <Route path="/blueprint-upload" element={<BlueprintStudio defaultTab="upload" />} />
           <Route path="/admin" element={<BlueprintStudio defaultTab="upload" />} />
           <Route path="/mine-map-files" element={<BlueprintStudio defaultTab="files" />} />
