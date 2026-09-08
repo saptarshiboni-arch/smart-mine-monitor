@@ -121,13 +121,13 @@ When a tunnel collapses or experiences critical subsidence, its edge cost become
 |---|---|---|---|---|
 | **Admin Portal** | `authentication-admin/mine-frontpage/` | `5500` | [http://localhost:5500](http://localhost:5500) | Mine Manager registration, CAD blueprint upload, miner shift crew manifest setup |
 | **Control Room Dashboard** | `src/` (Vite + React) | `3000` | [http://localhost:3000](http://localhost:3000) | Real-time strata telemetry, live 2D map, dynamic Dijkstra safe evacuation routing |
-| **AI/ML Telemetry Backend** | `backend/` (FastAPI) | `8000` | [http://localhost:8000](http://localhost:8000) | Hardware-aligned ML risk inference endpoint (`/predict`, `/health`) |
+| **AI/ML Telemetry & Prediction Model** | `AIML_SIH_MINE/` or `backend/` | `8000` | [http://localhost:8000](http://localhost:8000) | Hardware-aligned ML risk inference endpoint (`/predict`, `/health`) with Random Forest / XGBoost |
 
 ---
 
 ### 📦 Prerequisites
 - **Node.js** v18+ (tested on Node v20 & v24)
-- **Python** 3.10+ (for ML backend & serving static portal)
+- **Python** 3.10+ (for ML model backend & serving static portal)
 - Modern Web Browser (Google Chrome, Microsoft Edge, Firefox, Brave)
 
 ---
@@ -140,8 +140,8 @@ Open a terminal in the root repository directory:
 # Install frontend dashboard dependencies
 npm install
 
-# (Optional) Install Python ML backend dependencies
-cd backend
+# Install AI/ML model dependencies
+cd AIML_SIH_MINE
 pip install -r requirements.txt
 cd ..
 ```
@@ -165,14 +165,15 @@ python -m http.server 5500
 ```
 > The admin registration portal will start on `http://localhost:5500/`.
 
-##### Terminal 3 — AI/ML Prediction Backend *(Optional but Recommended)*
+##### Terminal 3 — AI/ML Prediction Backend (AIML_SIH_MINE)
 ```bash
-cd backend
-python main.py
+cd AIML_SIH_MINE
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 > The FastAPI service will start on `http://localhost:8000/` with live endpoints:
 > - `GET http://localhost:8000/health` (Readiness check)
-> - `POST http://localhost:8000/predict` (14-feature sensor risk analysis)
+> - `POST http://localhost:8000/predict` (Hardware sensor risk classification)
+> - Interactive Swagger Docs: `http://localhost:8000/docs`
 
 ---
 

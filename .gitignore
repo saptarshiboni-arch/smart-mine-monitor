@@ -32,3 +32,5 @@ __pycache__/
 backend/uploads/
 backend/test_assets/
 backend/data/
+.pytest_cache/
+
