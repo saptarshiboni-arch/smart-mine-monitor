@@ -202,3 +202,14 @@ export async function resetHardwareSensorNodes(baseUrl = DEFAULT_BACKEND_URL) {
   return null;
 }
 
+/**
+ * Deletes a single hardware sensor node by node_id from the backend
+ */
+export async function deleteHardwareSensorNode(nodeId, baseUrl = DEFAULT_BACKEND_URL) {
+  try {
+    const res = await fetch(`${baseUrl}/api/sensors/data/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });
+    if (res.ok) return await res.json();
+  } catch (err) {}
+  return null;
+}
+

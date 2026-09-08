@@ -13,6 +13,7 @@ import {
   fetchHardwareSensorData,
   sendHardwareTelemetry,
   resetHardwareSensorNodes,
+  deleteHardwareSensorNode,
 } from '../services/mlAdapter.js';
 import { setLiveMLPrediction } from '../services/aiPrediction.js';
 import { MINE_TUNNELS, MINE_NODES } from '../data/mineData.js';
@@ -845,6 +846,7 @@ export const MineProvider = ({ children }) => {
     hardwareStatus,
     sendHardwareTelemetry,
     resetHardwareSensorNodes,
+    deleteHardwareSensorNode,
 
     // Actions
     activateMap,

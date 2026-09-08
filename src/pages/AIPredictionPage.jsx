@@ -47,6 +47,7 @@ export default function AIPredictionPage() {
     hardwareStatus = {},
     sendHardwareTelemetry,
     resetHardwareSensorNodes,
+    deleteHardwareSensorNode,
   } = useMine();
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showArchitectureGuide, setShowArchitectureGuide] = useState(false);
@@ -366,6 +367,7 @@ export default function AIPredictionPage() {
                   <th className="py-2 px-3">ML Risk Assessment</th>
                   <th className="py-2 px-3">Confidence</th>
                   <th className="py-2 px-3">Last Ping</th>
+                  <th className="py-2 px-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-mine-border">
@@ -401,6 +403,16 @@ export default function AIPredictionPage() {
                       <td className="py-2 px-3 font-mono">{conf}</td>
                       <td className="py-2 px-3 font-mono text-[11px] text-mine-text-secondary">
                         {node.timestamp ? new Date(node.timestamp).toLocaleTimeString('en-IN') : (node.last_received || '--')}
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <button
+                          type="button"
+                          title={`Delete ${node.node_id}`}
+                          onClick={() => deleteHardwareSensorNode(node.node_id)}
+                          className="p-1 rounded text-mine-text-secondary hover:text-status-critical hover:bg-status-critical/10 transition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );

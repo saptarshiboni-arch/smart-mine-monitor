@@ -400,6 +400,20 @@ def get_single_hardware_sensor(node_id: str):
     return nodes[node_id]
 
 
+@app.delete("/api/sensors/data/{node_id}", tags=["Hardware Ingestion"])
+def delete_single_hardware_sensor(node_id: str):
+    nodes = load_hardware_nodes()
+    if node_id not in nodes:
+        raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
+    del nodes[node_id]
+    temp_file = str(HARDWARE_NODES_FILE) + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        import json as _json
+        _json.dump(nodes, f, indent=2, default=str)
+    shutil.move(temp_file, str(HARDWARE_NODES_FILE))
+    return {"status": "ok", "message": f"Hardware node '{node_id}' deleted", "remaining_nodes": len(nodes)}
+
+
 @app.delete("/api/sensors/data", tags=["Hardware Ingestion"])
 def reset_hardware_sensors():
     if HARDWARE_NODES_FILE.exists():
