@@ -1318,7 +1318,15 @@
       transitionModal.classList.remove('is-visible');
       const sessionParam = encodeURIComponent(JSON.stringify(activeSession));
       const targetRoute = state.blueprint.customMap ? '/mine-map' : '/overview';
-      window.location.href = `http://localhost:3000/#${targetRoute}?session=${sessionParam}`;
+      const targetHash = `#${targetRoute}?session=${sessionParam}`;
+      const isEmbedded = window.top && window.top !== window;
+      if (isEmbedded) {
+        window.top.location.hash = targetHash;
+      } else {
+        const isLocal5500 = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '5500';
+        const base = isLocal5500 ? 'http://localhost:3000' : window.location.origin;
+        window.location.href = `${base}/${targetHash}`;
+      }
     }, 900);
   });
 

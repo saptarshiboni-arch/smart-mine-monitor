@@ -312,7 +312,7 @@ export const MineProvider = ({ children }) => {
     });
     if (redirectToPortal && typeof window !== 'undefined') {
       setTimeout(() => {
-        window.location.href = 'http://localhost:5500/';
+        window.location.hash = '#/portal';
       }, 400);
     }
   }, [engine, addToast]);
