@@ -1,18 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/health",
-      "destination": "https://aiml-sih-mine.vercel.app/health"
-    },
-    {
-      "source": "/predict",
-      "destination": "https://aiml-sih-mine.vercel.app/predict"
-    },
-    {
-      "source": "/api/sensors/:path*",
-      "destination": "https://aiml-sih-mine.vercel.app/api/sensors/:path*"
-    },
-    {
       "source": "/authentication-admin/mine-frontpage",
       "destination": "/authentication-admin/mine-frontpage/index.html"
     },
