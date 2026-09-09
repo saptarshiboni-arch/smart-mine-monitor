@@ -174,16 +174,26 @@ const BACKEND_API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8
  * Fetch list of all mine maps from backend (Mine Map Files section)
  */
 export async function fetchMineMaps() {
-  try {
-    const res = await fetch(`${BACKEND_API_BASE}/api/mine-maps`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.maps && data.maps.length > 0) {
-        return data;
+  const candidates = [`${BACKEND_API_BASE}/api/mine-maps`];
+  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/api/mine-maps`)) {
+    candidates.push(`${window.location.origin}/api/mine-maps`);
+  }
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (data && data.maps && data.maps.length > 0) {
+            return data;
+          }
+        }
       }
+    } catch (err) {
+      // Continue to next candidate
     }
-  } catch (err) {
-    console.warn('[MineMapStore] Backend unreachable for list maps, using local repository:', err);
   }
 
   const savedMines = getSavedMinesList();

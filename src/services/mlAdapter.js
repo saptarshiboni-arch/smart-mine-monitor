@@ -201,37 +201,48 @@ export function runAIMLSihMineInference(payload = {}) {
 
 export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
   const startTime = performance.now();
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
+  const candidates = [baseUrl];
+  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(window.location.origin)) {
+    candidates.unshift(window.location.origin);
+  }
 
-    const res = await fetch(`${baseUrl}/health`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+  for (const candidate of candidates) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
 
-    const latency = Math.round(performance.now() - startTime);
+      const res = await fetch(`${candidate}/health`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      mlConnectionStatus = {
-        isConfigured: true,
-        isConnected: true,
-        isLocalServer: true,
-        isEmbeddedEngine: false,
-        endpoint: `${baseUrl}/predict`,
-        healthEndpoint: `${baseUrl}/health`,
-        modelName: data.model_name || 'AIML_SIH_MINE (FastAPI Local: 8000)',
-        featuresCount: data.features_count || 14,
-        lastChecked: new Date().toLocaleTimeString('en-IN'),
-        latencyMs: latency,
-        error: null,
-      };
-      return mlConnectionStatus;
+      const latency = Math.round(performance.now() - startTime);
+
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json().catch(() => ({}));
+          mlConnectionStatus = {
+            isConfigured: true,
+            isConnected: true,
+            isLocalServer: true,
+            isEmbeddedEngine: false,
+            endpoint: `${candidate}/predict`,
+            healthEndpoint: `${candidate}/health`,
+            modelName: data.model_name || 'AIML_SIH_MINE (FastAPI Backend)',
+            featuresCount: data.features_count || 14,
+            lastChecked: new Date().toLocaleTimeString('en-IN'),
+            latencyMs: latency,
+            error: null,
+          };
+          return mlConnectionStatus;
+        }
+      }
+    } catch (err) {
+      // Continue to next candidate or fallback
     }
-  } catch (err) {
-    // Backend offline (standard in cloud Vercel environment)
   }
 
   // Active Embedded AIML_SIH_MINE Model Engine
@@ -257,25 +268,40 @@ export function getMLConnectionStatus() {
 }
 
 export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
+  const targetUrl = mlConnectionStatus.isConnected && mlConnectionStatus.endpoint?.startsWith('http')
+    ? mlConnectionStatus.endpoint
+    : `${baseUrl}/predict`;
 
-    const response = await fetch(`${baseUrl}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
-      const result = await response.json();
-      return result;
-    }
-  } catch (err) {
-    // Fall back seamlessly to client-side AIML_SIH_MINE execution
+  const candidates = [targetUrl];
+  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/predict`)) {
+    candidates.push(`${window.location.origin}/predict`);
   }
+
+  for (const endpoint of candidates) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const result = await response.json();
+          return result;
+        }
+      }
+    } catch (err) {
+      // Continue to next candidate
+    }
+  }
+
   return runAIMLSihMineInference(payload);
 }
 
@@ -283,22 +309,32 @@ export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
  * Polls the backend hardware registry for latest ESP32 / gateway telemetry packets.
  */
 export async function fetchHardwareSensorData(baseUrl = DEFAULT_BACKEND_URL) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1800);
+  const candidates = [`${baseUrl}/api/sensors/data`];
+  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/api/sensors/data`)) {
+    candidates.push(`${window.location.origin}/api/sensors/data`);
+  }
 
-    const res = await fetch(`${baseUrl}/api/sensors/data`, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+  for (const url of candidates) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
 
-    if (res.ok) {
-      return await res.json();
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          return await res.json();
+        }
+      }
+    } catch (err) {
+      // Offline or unreachable
     }
-  } catch (err) {
-    // Offline or unreachable
   }
   return null;
 }
@@ -307,25 +343,35 @@ export async function fetchHardwareSensorData(baseUrl = DEFAULT_BACKEND_URL) {
  * Sends a real or simulated hardware reading to /api/sensors/data
  */
 export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_URL, apiKey = null) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   if (apiKey) headers['X-API-Key'] = apiKey;
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch(`${baseUrl}/api/sensors/data`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+  const candidates = [`${baseUrl}/api/sensors/data`];
+  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/api/sensors/data`)) {
+    candidates.push(`${window.location.origin}/api/sensors/data`);
+  }
 
-    if (res.ok) {
-      return await res.json();
+  for (const url of candidates) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          return await res.json();
+        }
+      }
+    } catch (err) {
+      // Continue to next candidate
     }
-  } catch (err) {
-    // Backend offline / cloud hosting: fall back directly to client-side AIML_SIH_MINE
   }
 
   const pred = runAIMLSihMineInference(payload);
