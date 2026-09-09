@@ -167,7 +167,7 @@ export function saveCustomMap(mapData) {
   }
 }
 
-const BACKEND_API_BASE = 'http://localhost:8000';
+const BACKEND_API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 /**
  * Fetch list of all mine maps from backend (Mine Map Files section)

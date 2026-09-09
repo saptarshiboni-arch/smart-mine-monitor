@@ -2,7 +2,7 @@
 // Prepares physical sensor payload matching the Kaggle/ESP32 14-feature architecture
 // Handles live connection status, backend health check, and model inference fallback.
 
-const DEFAULT_BACKEND_URL = 'http://localhost:8000';
+const DEFAULT_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 let mlConnectionStatus = {
   isConfigured: true,

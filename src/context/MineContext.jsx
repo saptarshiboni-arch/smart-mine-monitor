@@ -365,7 +365,7 @@ export const MineProvider = ({ children }) => {
   const [mlBackendState, setMlBackendState] = useState({
     isConnected: false,
     modelName: 'Calibrated Geotechnical Ensemble (Local Fallback)',
-    endpoint: 'http://localhost:8000/predict',
+    endpoint: `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/predict`,
     lastChecked: null,
     latencyMs: null,
     isPredicting: false,
