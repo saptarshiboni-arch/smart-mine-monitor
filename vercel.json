@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/authentication-admin/mine-frontpage",
+      "destination": "/authentication-admin/mine-frontpage/index.html"
+    },
+    {
+      "source": "/authentication-admin/mine-frontpage/",
+      "destination": "/authentication-admin/mine-frontpage/index.html"
+    },
+    {
+      "source": "/authentication-admin/:path*",
+      "destination": "/authentication-admin/:path*"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

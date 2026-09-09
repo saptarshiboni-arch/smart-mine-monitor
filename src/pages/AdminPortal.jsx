@@ -2,15 +2,13 @@ import React from 'react';
 
 export default function AdminPortal() {
   return (
-    <iframe
-      title="MineGuard AI administration portal"
-      src="/authentication-admin/mine-frontpage/index.html"
-      style={{
-        border: 0,
-        display: 'block',
-        height: '100vh',
-        width: '100%',
-      }}
-    />
+    <div className="w-full h-screen overflow-hidden bg-[#0c0e12]">
+      <iframe
+        title="MineGuard AI administration portal"
+        src="/authentication-admin/mine-frontpage/index.html"
+        className="w-full h-full border-0 block"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      />
+    </div>
   );
 }

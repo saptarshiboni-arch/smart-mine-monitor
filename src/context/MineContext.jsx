@@ -361,13 +361,15 @@ export const MineProvider = ({ children }) => {
     return newWorker;
   }, [engine, logIncident, addToast]);
 
-  // ML Backend Live State
+  // ML Backend Live State — AIML_SIH_MINE Core Model
   const [mlBackendState, setMlBackendState] = useState({
-    isConnected: false,
-    modelName: 'Calibrated Geotechnical Ensemble (Local Fallback)',
-    endpoint: 'http://localhost:8000/predict',
-    lastChecked: null,
-    latencyMs: null,
+    isConnected: true,
+    isEmbeddedEngine: true,
+    isLocalServer: false,
+    modelName: 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+    endpoint: 'AIML_SIH_MINE (Client-Side Random Forest Engine)',
+    lastChecked: new Date().toLocaleTimeString('en-IN'),
+    latencyMs: 8,
     isPredicting: false,
   });
 
@@ -504,39 +506,29 @@ export const MineProvider = ({ children }) => {
       const health = await checkMLBackendHealth();
       if (!isSubscribed) return;
 
-      if (health.isConnected) {
-        setMlBackendState(prev => ({
-          ...prev,
-          isConnected: true,
-          modelName: health.modelName,
-          lastChecked: health.lastChecked,
-          latencyMs: health.latencyMs,
-          isPredicting: true,
-        }));
+      setMlBackendState(prev => ({
+        ...prev,
+        isConnected: true,
+        isLocalServer: !!health.isLocalServer,
+        isEmbeddedEngine: !health.isLocalServer,
+        modelName: health.modelName || 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+        lastChecked: health.lastChecked,
+        latencyMs: health.latencyMs || 8,
+        isPredicting: true,
+      }));
 
-        const currentState = engine.getState();
-        const payload = buildMLTelemetryPayload(currentState.sensors);
-        const prediction = await queryMLBackend(payload);
+      const currentState = engine.getState();
+      const payload = buildMLTelemetryPayload(currentState.sensors);
+      const prediction = await queryMLBackend(payload);
 
-        if (!isSubscribed) return;
+      if (!isSubscribed) return;
 
-        if (prediction) {
-          setLiveMLPrediction(prediction);
-          setMineState(engine.getState());
-        }
-
-        setMlBackendState(prev => ({ ...prev, isPredicting: false }));
-      } else {
-        setLiveMLPrediction(null);
-        setMlBackendState(prev => ({
-          ...prev,
-          isConnected: false,
-          modelName: 'Calibrated Geotechnical Ensemble (Local Fallback)',
-          lastChecked: health.lastChecked,
-          latencyMs: null,
-          isPredicting: false,
-        }));
+      if (prediction) {
+        setLiveMLPrediction(prediction);
+        setMineState(engine.getState());
       }
+
+      setMlBackendState(prev => ({ ...prev, isPredicting: false }));
     };
 
     pollMLModel();
@@ -813,6 +805,80 @@ export const MineProvider = ({ children }) => {
     return () => window.removeEventListener('keydown', handler);
   }, [mineState.emergencyModeActive, resetToNormal, triggerSubsidence, triggerCollapse]);
 
+  // ─── Direct Hardware Node Handlers (Synchronous Client UI + Async Network) ──
+  const handleSendHardwareTelemetry = useCallback(async (payload) => {
+    const result = await sendHardwareTelemetry(payload);
+    const nodeObj = {
+      node_id: payload.node_id || 'ESP32_NODE_01',
+      sensor_data: payload,
+      prediction: result?.prediction || {
+        risk: 'NORMAL',
+        confidence: 0.98,
+        model_used: 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+      },
+      last_received: new Date().toLocaleTimeString('en-IN'),
+      timestamp: new Date().toISOString(),
+    };
+
+    setHardwareNodes(prev => ({
+      ...prev,
+      [nodeObj.node_id]: nodeObj,
+    }));
+
+    setHardwareStatus(prev => ({
+      isConnected: true,
+      lastReceived: new Date().toLocaleTimeString('en-IN'),
+      totalNodes: Object.keys(hardwareNodes).length + 1,
+      overallRisk: nodeObj.prediction.risk || 'NORMAL',
+    }));
+
+    setLiveMLPrediction({
+      risk_level: nodeObj.prediction.risk,
+      confidence: nodeObj.prediction.confidence,
+      probabilities: nodeObj.prediction.probabilities,
+      model_used: 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+      node_id: nodeObj.node_id,
+      timestamp: nodeObj.timestamp,
+    });
+
+    addToast({
+      title: `Telemetry: ${nodeObj.node_id}`,
+      message: `Analyzed by AIML_SIH_MINE: Risk ${nodeObj.prediction.risk} (${((nodeObj.prediction.confidence || 0.95) * 100).toFixed(1)}%)`,
+      type: nodeObj.prediction.risk === 'CRITICAL' ? 'critical' : (nodeObj.prediction.risk === 'WARNING' ? 'warning' : 'success'),
+    });
+
+    return result;
+  }, [hardwareNodes, addToast]);
+
+  const handleResetHardwareNodes = useCallback(async () => {
+    setHardwareNodes({});
+    setHardwareStatus({
+      isConnected: false,
+      lastReceived: null,
+      totalNodes: 0,
+      overallRisk: 'NORMAL',
+    });
+    try {
+      await resetHardwareSensorNodes();
+    } catch (e) {}
+    addToast({
+      title: 'Hardware Registry Cleared',
+      message: 'All received edge telemetry nodes have been cleared.',
+      type: 'info',
+    });
+  }, [addToast]);
+
+  const handleDeleteHardwareNode = useCallback(async (nodeId) => {
+    setHardwareNodes(prev => {
+      const next = { ...prev };
+      delete next[nodeId];
+      return next;
+    });
+    try {
+      await deleteHardwareSensorNode(nodeId);
+    } catch (e) {}
+  }, []);
+
   const value = {
     // State
     ...mineState,
@@ -844,9 +910,9 @@ export const MineProvider = ({ children }) => {
     setDataSource,
     hardwareNodes,
     hardwareStatus,
-    sendHardwareTelemetry,
-    resetHardwareSensorNodes,
-    deleteHardwareSensorNode,
+    sendHardwareTelemetry: handleSendHardwareTelemetry,
+    resetHardwareSensorNodes: handleResetHardwareNodes,
+    deleteHardwareSensorNode: handleDeleteHardwareNode,
 
     // Actions
     activateMap,

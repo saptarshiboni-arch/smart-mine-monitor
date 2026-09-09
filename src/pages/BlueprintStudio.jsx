@@ -482,10 +482,10 @@ export default function BlueprintStudio({ defaultTab = 'upload' }) {
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-bold tracking-tight text-mine-text-primary flex items-center gap-2">
               <Cpu className="h-6 w-6 text-status-safe" />
-              <span>Administration → Admin: Blueprint 2D Map Studio</span>
+              <span>AIML_SIH_MINEMAP: Blueprint 2D Map Studio</span>
             </h1>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-status-safe/15 text-status-safe border border-status-safe/30">
-              CV + ML BACKEND
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+              AIML_SIH_MINEMAP • CAD GRAPH COMPILER
             </span>
             {activeMap && !activeMap.isDefault && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
@@ -494,7 +494,7 @@ export default function BlueprintStudio({ defaultTab = 'upload' }) {
             )}
           </div>
           <p className="text-xs text-mine-text-secondary mt-1">
-            Upload underground mine blueprints (PNG, JPG, WEBP, PDF). The backend OpenCV + ML pipeline detects tunnel structures, junctions, and rooms to synthesize a digital 2D map.
+            Upload underground mine blueprints (PNG, JPG, WEBP, PDF). The <code className="font-mono font-bold text-mine-text-primary">AIML_SIH_MINEMAP/</code> computer vision engine extracts centerline galleries, classifies junctions, and synthesizes an interactive 2D graph.
           </p>
         </div>
 
