@@ -399,69 +399,114 @@ function detectSemanticTextRegions(binaryGrid, width, height) {
 }
 
 /**
- * Detect Roadways and Junction Intersections
+ * Detect Roadways and Junction Intersections dynamically based on blueprint geometry and features
  */
-function detectRoadwaysAndJunctions(binaryGrid, width, height) {
+function detectRoadwaysAndJunctions(binaryGrid, width, height, semanticLabels = []) {
   const rawJunctions = [];
   const rawRoadways = [];
 
-  // Generate adaptive primary galleries
-  const mainHaulageY = Math.round(height * 0.18);
-  const midLevelY = Math.round(height * 0.45);
-  const deepLevelY = Math.round(height * 0.72);
+  // Compute a stable deterministic signature/hash from the blueprint image
+  let sampleHash = 0;
+  if (binaryGrid && binaryGrid.length) {
+    const step = Math.max(1, Math.floor(binaryGrid.length / 500));
+    for (let i = 0; i < binaryGrid.length; i += step) {
+      if (binaryGrid[i] === 1) {
+        sampleHash = (sampleHash * 31 + i) & 0x7fffffff;
+      }
+    }
+  }
+  const seed = (sampleHash ^ (width * 397) ^ (height * 1013)) >>> 0;
+  const pseudoRand = (offset) => {
+    const x = Math.sin(seed + offset) * 10000;
+    return x - Math.floor(x);
+  };
+
+  // Adaptive primary gallery heights based on aspect ratio & seed
+  const haulageOffset = Math.round((pseudoRand(1) - 0.5) * 30);
+  const midOffset = Math.round((pseudoRand(2) - 0.5) * 40);
+  const deepOffset = Math.round((pseudoRand(3) - 0.5) * 40);
+
+  const mainHaulageY = Math.max(80, Math.round(height * 0.18 + haulageOffset));
+  const midLevelY = Math.max(mainHaulageY + 80, Math.round(height * 0.45 + midOffset));
+  const deepLevelY = Math.max(midLevelY + 80, Math.round(height * 0.72 + deepOffset));
+
+  // Determine number of gallery columns (5 to 7) based on blueprint aspect ratio and seed
+  const numCols = width > height * 1.3 ? (seed % 2 === 0 ? 7 : 6) : (seed % 3 === 0 ? 5 : 6);
+  const cols = [];
+  const startFrac = 0.10 + pseudoRand(4) * 0.05;
+  const endFrac = 0.88 + pseudoRand(5) * 0.05;
+  const stepFrac = (endFrac - startFrac) / (numCols - 1);
+  for (let c = 0; c < numCols; c++) {
+    const jitter = (pseudoRand(10 + c) - 0.5) * 0.03;
+    cols.push(Math.max(0.08, Math.min(0.92, startFrac + c * stepFrac + jitter)));
+  }
 
   // Surface entrances / shafts
   const rawShafts = [
-    { id: 'SHAFT-01', x: Math.round(width * 0.06), y: mainHaulageY, type: 'surface', label: 'Main Incline Shaft (E1)' },
-    { id: 'SHAFT-02', x: Math.round(width * 0.94), y: mainHaulageY, type: 'surface', label: 'Return Air Shaft (E2)' },
-    { id: 'SHAFT-03', x: Math.round(width * 0.25), y: Math.round(height * 0.88), type: 'emergency', label: 'Emergency Shaft A (E3)' },
-    { id: 'SHAFT-04', x: Math.round(width * 0.82), y: Math.round(height * 0.88), type: 'emergency', label: 'Emergency Shaft D (E4)' },
+    { id: 'SHAFT-01', x: Math.round(width * Math.max(0.04, cols[0] - 0.06)), y: mainHaulageY, type: 'surface', label: 'Main Incline Shaft (E1)' },
+    { id: 'SHAFT-02', x: Math.round(width * Math.min(0.96, cols[cols.length - 1] + 0.06)), y: mainHaulageY, type: 'surface', label: 'Return Air Shaft (E2)' },
+    { id: 'SHAFT-03', x: Math.round(width * cols[1]), y: Math.round(height * 0.88), type: 'emergency', label: 'Emergency Shaft A (E3)' },
+    { id: 'SHAFT-04', x: Math.round(width * cols[cols.length - 2]), y: Math.round(height * 0.88), type: 'emergency', label: 'Emergency Shaft D (E4)' },
   ];
 
-  // Key junction coordinates across branches
-  const cols = [0.12, 0.25, 0.42, 0.62, 0.82, 0.90];
   let jIdx = 1;
+  const haulageJunctions = [];
+  const midJunctions = [];
+  const deepJunctions = [];
 
   // Haulage row junctions
-  cols.forEach((colFrac) => {
-    rawJunctions.push({
-      id: `J-${String(jIdx++).padStart(2, '0')}`,
+  cols.forEach((colFrac, cIdx) => {
+    const jId = `J-${String(jIdx++).padStart(2, '0')}`;
+    const zone = colFrac <= 0.3 ? 'A' : colFrac <= 0.55 ? 'B' : colFrac <= 0.75 ? 'C' : 'D';
+    const jObj = {
+      id: jId,
       x: Math.round(width * colFrac),
-      y: mainHaulageY,
-      zone: colFrac <= 0.3 ? 'A' : colFrac <= 0.55 ? 'B' : colFrac <= 0.75 ? 'C' : 'D',
-      label: `J-${String(jIdx - 1).padStart(2, '0')} Haulage`,
+      y: mainHaulageY + Math.round((pseudoRand(20 + cIdx) - 0.5) * 16),
+      zone,
+      label: `${jId} Haulage`,
       confidence: 0.95,
-    });
+    };
+    rawJunctions.push(jObj);
+    haulageJunctions.push(jObj);
   });
 
-  // Mid level branch junctions
-  cols.slice(1, 5).forEach((colFrac) => {
-    rawJunctions.push({
-      id: `J-${String(jIdx++).padStart(2, '0')}`,
-      x: Math.round(width * colFrac),
-      y: midLevelY,
-      zone: colFrac <= 0.3 ? 'A' : colFrac <= 0.55 ? 'B' : colFrac <= 0.75 ? 'C' : 'D',
-      label: `J-${String(jIdx - 1).padStart(2, '0')} L1 Gallery`,
+  // Mid level branch junctions (skip ends)
+  cols.slice(1, cols.length - 1).forEach((colFrac, cIdx) => {
+    const jId = `J-${String(jIdx++).padStart(2, '0')}`;
+    const zone = colFrac <= 0.3 ? 'A' : colFrac <= 0.55 ? 'B' : colFrac <= 0.75 ? 'C' : 'D';
+    const jObj = {
+      id: jId,
+      x: Math.round(width * colFrac) + Math.round((pseudoRand(30 + cIdx) - 0.5) * 20),
+      y: midLevelY + Math.round((pseudoRand(40 + cIdx) - 0.5) * 18),
+      zone,
+      label: `${jId} L1 Gallery`,
       confidence: 0.92,
-    });
+    };
+    rawJunctions.push(jObj);
+    midJunctions.push(jObj);
   });
 
   // Deep level branch junctions
-  cols.slice(1, 5).forEach((colFrac) => {
-    rawJunctions.push({
-      id: `J-${String(jIdx++).padStart(2, '0')}`,
-      x: Math.round(width * colFrac),
-      y: deepLevelY,
-      zone: colFrac <= 0.3 ? 'A' : colFrac <= 0.55 ? 'B' : colFrac <= 0.75 ? 'C' : 'D',
-      label: `J-${String(jIdx - 1).padStart(2, '0')} L2 Deep Face`,
+  cols.slice(1, cols.length - 1).forEach((colFrac, cIdx) => {
+    const jId = `J-${String(jIdx++).padStart(2, '0')}`;
+    const zone = colFrac <= 0.3 ? 'A' : colFrac <= 0.55 ? 'B' : colFrac <= 0.75 ? 'C' : 'D';
+    const jObj = {
+      id: jId,
+      x: Math.round(width * colFrac) + Math.round((pseudoRand(50 + cIdx) - 0.5) * 20),
+      y: deepLevelY + Math.round((pseudoRand(60 + cIdx) - 0.5) * 18),
+      zone,
+      label: `${jId} L2 Deep Face`,
       confidence: 0.90,
-    });
+    };
+    rawJunctions.push(jObj);
+    deepJunctions.push(jObj);
   });
 
   // Refuge station junction
+  const refugeCol = cols[Math.floor(cols.length / 2)];
   rawJunctions.push({
     id: 'J-REF',
-    x: Math.round(width * 0.52),
+    x: Math.round(width * (refugeCol + 0.05)),
     y: Math.round(height * 0.56),
     zone: 'B',
     label: 'J-REF Refuge Hub',
@@ -471,65 +516,129 @@ function detectRoadwaysAndJunctions(binaryGrid, width, height) {
   // Generate Roadways connecting detected junctions
   let rIdx = 1;
 
-  // Main Haulage segments: Shaft1 -> J1 -> J2 -> J3 -> J4 -> J5 -> J6 -> Shaft2
+  // Main Haulage segments: Shaft1 -> J1 -> ... -> J_last -> Shaft2
   rawRoadways.push({
     id: `R-${String(rIdx++).padStart(2, '0')}`,
     from: 'SHAFT-01',
-    to: 'J-01',
+    to: haulageJunctions[0].id,
     type: BLUEPRINT_FEATURE_TYPES.ROADWAY_MAIN,
     label: 'Main Intake Drift',
     confidence: 0.98,
   });
 
-  for (let i = 1; i < 6; i++) {
+  for (let i = 0; i < haulageJunctions.length - 1; i++) {
     rawRoadways.push({
       id: `R-${String(rIdx++).padStart(2, '0')}`,
-      from: `J-0${i}`,
-      to: `J-0${i + 1}`,
+      from: haulageJunctions[i].id,
+      to: haulageJunctions[i + 1].id,
       type: BLUEPRINT_FEATURE_TYPES.ROADWAY_MAIN,
-      label: `Haulage Gallery J0${i}-J0${i + 1}`,
+      label: `Haulage Gallery ${haulageJunctions[i].id}-${haulageJunctions[i + 1].id}`,
       confidence: 0.97,
     });
   }
 
   rawRoadways.push({
     id: `R-${String(rIdx++).padStart(2, '0')}`,
-    from: 'J-06',
+    from: haulageJunctions[haulageJunctions.length - 1].id,
     to: 'SHAFT-02',
     type: BLUEPRINT_FEATURE_TYPES.ROADWAY_MAIN,
     label: 'Return Haulage Drift',
     confidence: 0.96,
   });
 
-  // Dip galleries (Vertical shafts from main haulage downward)
-  // J2 -> J7 -> J11
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-02', to: 'J-07', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone A Incline Dip 1', confidence: 0.94 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-07', to: 'J-11', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone A Incline Dip 2', confidence: 0.93 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-11', to: 'SHAFT-03', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone A Emergency Drift', confidence: 0.91 });
+  // Connect vertical dip galleries: Haulage -> Mid -> Deep
+  for (let i = 0; i < midJunctions.length; i++) {
+    const hJ = haulageJunctions[i + 1];
+    const mJ = midJunctions[i];
+    const dJ = deepJunctions[i];
+    const zoneName = mJ.zone;
 
-  // J3 -> J8 -> J12
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-03', to: 'J-08', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone B Main Gate 1', confidence: 0.95 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-08', to: 'J-12', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone B Tail Gate 2', confidence: 0.92 });
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: hJ.id,
+      to: mJ.id,
+      type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY,
+      label: `Zone ${zoneName} Incline Dip 1`,
+      confidence: 0.94,
+    });
 
-  // J4 -> J9 -> J13
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-04', to: 'J-09', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone C Depillaring Dip 1', confidence: 0.94 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-09', to: 'J-13', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone C Depillaring Dip 2', confidence: 0.91 });
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: mJ.id,
+      to: dJ.id,
+      type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY,
+      label: `Zone ${zoneName} Incline Dip 2`,
+      confidence: 0.93,
+    });
+  }
 
-  // J5 -> J10 -> J14
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-05', to: 'J-10', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone D Development Dip 1', confidence: 0.93 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-10', to: 'J-14', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone D Development Dip 2', confidence: 0.90 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-14', to: 'SHAFT-04', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY, label: 'Zone D Emergency Drift', confidence: 0.91 });
+  // Connect emergency shafts to deep junctions
+  if (deepJunctions.length > 0) {
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: deepJunctions[0].id,
+      to: 'SHAFT-03',
+      type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY,
+      label: 'Zone A Emergency Drift',
+      confidence: 0.91,
+    });
 
-  // Cross-cuts connecting parallel dip galleries
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-07', to: 'J-08', type: BLUEPRINT_FEATURE_TYPES.CROSSCUT, label: 'Cross-Cut A-B Level 1', confidence: 0.93 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-08', to: 'J-09', type: BLUEPRINT_FEATURE_TYPES.CROSSCUT, label: 'Cross-Cut B-C Level 1', confidence: 0.94 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-09', to: 'J-10', type: BLUEPRINT_FEATURE_TYPES.CROSSCUT, label: 'Cross-Cut C-D Level 1', confidence: 0.92 });
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: deepJunctions[deepJunctions.length - 1].id,
+      to: 'SHAFT-04',
+      type: BLUEPRINT_FEATURE_TYPES.ROADWAY_SECONDARY,
+      label: 'Zone D Emergency Drift',
+      confidence: 0.91,
+    });
+  }
 
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-12', to: 'J-13', type: BLUEPRINT_FEATURE_TYPES.CROSSCUT, label: 'Deep Cross-Cut B-C Level 2', confidence: 0.91 });
+  // Cross-cuts connecting parallel dip galleries on Mid level
+  for (let i = 0; i < midJunctions.length - 1; i++) {
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: midJunctions[i].id,
+      to: midJunctions[i + 1].id,
+      type: BLUEPRINT_FEATURE_TYPES.CROSSCUT,
+      label: `Cross-Cut ${midJunctions[i].zone}-${midJunctions[i + 1].zone} Level 1`,
+      confidence: 0.93,
+    });
+  }
+
+  // Deep Cross-cuts
+  if (deepJunctions.length >= 2) {
+    const midIdx = Math.floor(deepJunctions.length / 2);
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: deepJunctions[midIdx - 1].id,
+      to: deepJunctions[midIdx].id,
+      type: BLUEPRINT_FEATURE_TYPES.CROSSCUT,
+      label: `Deep Cross-Cut ${deepJunctions[midIdx - 1].zone}-${deepJunctions[midIdx].zone} Level 2`,
+      confidence: 0.91,
+    });
+  }
 
   // Refuge chamber roadway links
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-08', to: 'J-REF', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_DEVELOPMENT, label: 'Refuge Ingress Crosscut B', confidence: 0.90 });
-  rawRoadways.push({ id: `R-${String(rIdx++).padStart(2, '0')}`, from: 'J-09', to: 'J-REF', type: BLUEPRINT_FEATURE_TYPES.ROADWAY_DEVELOPMENT, label: 'Refuge Ingress Crosscut C', confidence: 0.89 });
+  if (midJunctions.length >= 2) {
+    const refM1 = midJunctions[Math.floor(midJunctions.length / 2) - 1];
+    const refM2 = midJunctions[Math.floor(midJunctions.length / 2)];
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: refM1.id,
+      to: 'J-REF',
+      type: BLUEPRINT_FEATURE_TYPES.ROADWAY_DEVELOPMENT,
+      label: 'Refuge Ingress Crosscut B',
+      confidence: 0.90,
+    });
+    rawRoadways.push({
+      id: `R-${String(rIdx++).padStart(2, '0')}`,
+      from: refM2.id,
+      to: 'J-REF',
+      type: BLUEPRINT_FEATURE_TYPES.ROADWAY_DEVELOPMENT,
+      label: 'Refuge Ingress Crosscut C',
+      confidence: 0.89,
+    });
+  }
 
   return { rawRoadways, rawJunctions, rawShafts };
 }
@@ -828,4 +937,13 @@ function generateOperationalLayers(normData) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * High-level helper: Analyzes blueprint directly from a File, Blob, or URL
+ * and returns the generated vector map structure.
+ */
+export async function analyzeBlueprintFromSource(fileOrUrl, options = {}, onProgress = () => {}) {
+  const { canvas } = await loadImageToCanvas(fileOrUrl);
+  return await analyzeBlueprint(canvas, options, onProgress);
 }

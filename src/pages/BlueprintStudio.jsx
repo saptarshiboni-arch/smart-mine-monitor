@@ -285,9 +285,17 @@ export default function BlueprintStudio({ defaultTab = 'upload' }) {
       setCurrentStepIndex(3);
       await new Promise((r) => setTimeout(r, 400));
 
-      // Step 5: 2D Map Generation (Call Backend Analyze API)
+      // Step 5: 2D Map Generation (Call Backend Analyze API with client CV fallback)
       setCurrentStepIndex(4);
-      const analyzeRes = await analyzeBlueprintBackend(mapId, true);
+      const analyzeRes = await analyzeBlueprintBackend(
+        mapId,
+        true,
+        targetFile || previewUrl,
+        {
+          mineName: customMineName || fileMeta?.name?.replace(/\.[^/.]+$/, ''),
+          seam: customSeam || 'Seam 4',
+        }
+      );
 
       // Step 6: Map Validation
       setCurrentStepIndex(5);
