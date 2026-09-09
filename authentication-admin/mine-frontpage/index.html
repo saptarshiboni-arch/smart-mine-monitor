@@ -16,6 +16,13 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
+  <!-- Dynamic Base Tag for Cloud Deployment Resolution -->
+  <script>
+    if (window.location.pathname.indexOf('/authentication-admin/') !== -1) {
+      document.write('<base href="' + window.location.origin + '/authentication-admin/mine-frontpage/">');
+    }
+  </script>
+
   <!-- Core Stylesheet -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
