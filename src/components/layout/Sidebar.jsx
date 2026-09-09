@@ -22,40 +22,16 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-const mainNavItems = [
+const controlCenterItems = [
   { name: 'Command Dashboard', path: '/overview', icon: LayoutDashboard },
   { name: '2D Live Mine Map', path: '/mine-map', icon: Map },
+  { name: 'AI 9-Layer Perception', path: '/perception-studio', icon: Sparkles },
+  { name: 'Blueprint → 2D Map AI', path: '/blueprint-upload', icon: UploadCloud },
   { name: 'Strata Sensors (24)', path: '/sensor-network', icon: Radio },
+  { name: 'AI Prediction & XAI', path: '/ai-prediction', icon: BrainCircuit },
   { name: 'Worker Safety (UPS)', path: '/worker-safety', icon: HardHat },
   { name: 'Emergency Evacuation', path: '/emergency', icon: ShieldAlert },
   { name: 'Incident Audit Log', path: '/incident-history', icon: ClipboardList },
-];
-
-const aiModelNavItems = [
-  {
-    name: 'AIML_SIH_MINE (Strata Subsidence ML)',
-    shortName: 'AIML_SIH_MINE (Subsidence)',
-    path: '/ai-prediction',
-    icon: BrainCircuit,
-    badge: '14-FEAT ML',
-    badgeColor: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  },
-  {
-    name: 'AIML_SIH_MINEMAP (Perception Studio)',
-    shortName: 'AIML_SIH_MINEMAP (Perception)',
-    path: '/perception-studio',
-    icon: Sparkles,
-    badge: 'U-NET CV',
-    badgeColor: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
-  },
-  {
-    name: 'AIML_SIH_MINEMAP (Blueprint → 2D Map)',
-    shortName: 'AIML_SIH_MINEMAP (CAD Map)',
-    path: '/blueprint-upload',
-    icon: UploadCloud,
-    badge: 'ROUTING',
-    badgeColor: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-  },
 ];
 
 const adminNavItems = [
@@ -146,10 +122,10 @@ export default function Sidebar() {
         {/* Navigation Links */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
           <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-mine-text-secondary">
-            Control Center Operations
+            Control Center Modules
           </div>
 
-          {mainNavItems.map((item) => {
+          {controlCenterItems.map((item) => {
             const Icon = item.icon;
             const isEmergency = item.name.includes('Emergency');
             return (
@@ -181,42 +157,6 @@ export default function Sidebar() {
               </NavLink>
             );
           })}
-
-          {/* AI & ML Models (SIH Prototype) Section */}
-          <div className="pt-3">
-            <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-mine-text-secondary flex items-center justify-between">
-              <span>AI Models (SIH 2026)</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-mono font-bold">
-                2 MODELS ACTIVE
-              </span>
-            </div>
-
-            {aiModelNavItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.name}
-                  to={item.path}
-                  onClick={() => setIsSidebarOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all group relative ${
-                      isActive
-                        ? 'bg-mine-surface text-mine-text-primary border border-mine-border shadow-card font-semibold'
-                        : 'text-mine-text-secondary hover:bg-mine-surface/70 hover:text-mine-text-primary'
-                    }`
-                  }
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon className="h-4 w-4 flex-shrink-0 transition-transform group-hover:scale-110 text-amber-500" />
-                    <span className="truncate font-medium">{item.name}</span>
-                  </div>
-                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${item.badgeColor}`}>
-                    {item.badge}
-                  </span>
-                </NavLink>
-              );
-            })}
-          </div>
 
           {/* Administration Section */}
           <div className="pt-3">
