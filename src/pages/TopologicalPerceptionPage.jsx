@@ -13,7 +13,11 @@ import {
 import { getDefaultMineMap } from '../services/mineMapStore';
 import { analyzeBlueprintFromSource } from '../services/blueprintVisionEngine';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://smartmine-backend.onrender.com'
+    : 'http://localhost:8000');
 
 export default function TopologicalPerceptionPage() {
   const { setCustomActiveMap, addToast } = useMine();
@@ -31,17 +35,32 @@ export default function TopologicalPerceptionPage() {
   }, []);
 
   const fetchCurrentMap = async () => {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/map`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && (data.tunnels || data.junctions || data.roadways)) {
-          setCurrentMap(data);
-          return;
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    const candidates = [
+      `${BACKEND_URL}/api/map`,
+      'https://smartmine-backend.onrender.com/api/map',
+      'https://smartmine-api.onrender.com/api/map',
+    ];
+    if (!isHttps) {
+      candidates.push('http://localhost:8000/api/map');
+    }
+
+    for (const url of candidates) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (data.tunnels || data.junctions || data.roadways)) {
+            setCurrentMap(data);
+            return;
+          }
         }
+      } catch (e) {
+        // Continue to next candidate
       }
-    } catch (e) {
-      // Backend offline or unreachable, retain fallback map
     }
     setCurrentMap(getDefaultMineMap());
   };

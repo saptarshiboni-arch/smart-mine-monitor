@@ -246,8 +246,10 @@ export default function AIPredictionPage() {
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-status-safe/15 text-status-safe border border-status-safe/30">
                   <CheckCircle2 className="h-3 w-3" />
                   {mlBackendState?.isLocalServer
-                    ? 'CONNECTED: FASTAPI (PORT 8000)'
-                    : 'MODEL ACTIVE: AIML_SIH_MINE (14-FEATURE RANDOM FOREST BUNDLE)'}
+                    ? (mlBackendState?.isCloudServer || mlBackendState?.endpoint?.includes('render.com')
+                        ? 'CONNECTED: FASTAPI (RENDER CLOUD)'
+                        : 'CONNECTED: FASTAPI (PORT 8000)')
+                    : 'MODEL ACTIVE: AIML_SIH_MINE (14-FEATURE ML ENGINE)'}
                 </span>
                 {mlBackendState?.isPredicting && (
                   <span className="inline-flex items-center gap-1 text-[11px] text-mine-text-secondary animate-pulse">
@@ -257,7 +259,7 @@ export default function AIPredictionPage() {
                 )}
               </div>
               <p className="text-[11px] text-mine-text-secondary mt-0.5">
-                Engine: <code className="font-mono text-xs bg-mine-surface-alt px-1 py-0.5 rounded border border-mine-border font-semibold text-mine-text-primary">{mlBackendState?.modelName || 'AIML_SIH_MINE (14-Feature Random Forest Bundle)'}</code> • Latency: <strong className="text-status-safe font-mono">{mlBackendState?.latencyMs || 8} ms</strong> • Execution: <strong>{mlBackendState?.isLocalServer ? 'Local Python Gateway' : 'Client-Side High-Speed ML Engine'}</strong>
+                Engine: <code className="font-mono text-xs bg-mine-surface-alt px-1 py-0.5 rounded border border-mine-border font-semibold text-mine-text-primary">{mlBackendState?.modelName || 'AIML_SIH_MINE (14-Feature Random Forest Bundle)'}</code> • Latency: <strong className="text-status-safe font-mono">{mlBackendState?.latencyMs || 8} ms</strong> • Execution: <strong>{mlBackendState?.isLocalServer ? (mlBackendState?.isCloudServer || mlBackendState?.endpoint?.includes('render.com') ? 'Cloud Python FastAPI (Render)' : 'Local Python Gateway (Port 8000)') : 'Client-Side High-Speed ML Engine'}</strong>
               </p>
             </div>
           </div>

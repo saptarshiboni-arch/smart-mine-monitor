@@ -168,15 +168,24 @@ export function saveCustomMap(mapData) {
   }
 }
 
-const BACKEND_API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_API_BASE =
+  import.meta.env.VITE_BACKEND_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://smartmine-backend.onrender.com'
+    : 'http://localhost:8000');
 
 /**
  * Fetch list of all mine maps from backend (Mine Map Files section)
  */
 export async function fetchMineMaps() {
-  const candidates = [`${BACKEND_API_BASE}/api/mine-maps`];
-  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/api/mine-maps`)) {
-    candidates.push(`${window.location.origin}/api/mine-maps`);
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const candidates = [
+    `${BACKEND_API_BASE}/api/mine-maps`,
+    'https://smartmine-backend.onrender.com/api/mine-maps',
+    'https://smartmine-api.onrender.com/api/mine-maps',
+  ];
+  if (!isHttps) {
+    candidates.push('http://localhost:8000/api/mine-maps');
   }
 
   for (const url of candidates) {

@@ -2,11 +2,35 @@
 // Prepares physical sensor payload matching the Kaggle/ESP32 14-feature architecture
 // Handles live connection status, backend health check, and model inference fallback.
 
-const DEFAULT_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+export const DEFAULT_BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://smartmine-backend.onrender.com'
+    : 'http://localhost:8000');
+
+export function getCandidateEndpoints(path = '', baseUrl = DEFAULT_BACKEND_URL) {
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const list = [];
+  const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : '';
+
+  if (baseUrl) list.push(`${baseUrl.replace(/\/$/, '')}${cleanPath}`);
+  list.push(`https://smartmine-backend.onrender.com${cleanPath}`);
+  list.push(`https://smartmine-api.onrender.com${cleanPath}`);
+
+  if (!isHttps) {
+    list.push(`http://localhost:8000${cleanPath}`);
+    list.push(`http://127.0.0.1:8000${cleanPath}`);
+  }
+
+  return [...new Set(list.filter(Boolean))];
+}
 
 let mlConnectionStatus = {
   isConfigured: true,
   isConnected: false,
+  isLocalServer: false,
+  isCloudServer: false,
+  isEmbeddedEngine: true,
   endpoint: `${DEFAULT_BACKEND_URL}/predict`,
   healthEndpoint: `${DEFAULT_BACKEND_URL}/health`,
   modelName: 'Random Forest (SIH Hardware-Aligned)',
@@ -201,17 +225,14 @@ export function runAIMLSihMineInference(payload = {}) {
 
 export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
   const startTime = performance.now();
-  const candidates = [baseUrl];
-  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(window.location.origin)) {
-    candidates.unshift(window.location.origin);
-  }
+  const candidates = getCandidateEndpoints('/health', baseUrl);
 
   for (const candidate of candidates) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1800);
 
-      const res = await fetch(`${candidate}/health`, {
+      const res = await fetch(candidate, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         signal: controller.signal,
@@ -224,14 +245,17 @@ export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
           const data = await res.json().catch(() => ({}));
+          const baseCandidate = candidate.replace(/\/health$/, '');
+          const isCloud = baseCandidate.includes('render.com') || baseCandidate.includes('vercel.app');
           mlConnectionStatus = {
             isConfigured: true,
             isConnected: true,
             isLocalServer: true,
+            isCloudServer: isCloud,
             isEmbeddedEngine: false,
-            endpoint: `${candidate}/predict`,
-            healthEndpoint: `${candidate}/health`,
-            modelName: data.model_name || 'AIML_SIH_MINE (FastAPI Backend)',
+            endpoint: `${baseCandidate}/predict`,
+            healthEndpoint: candidate,
+            modelName: data.model_name || (isCloud ? 'AIML_SIH_MINE (Render FastAPI Cloud)' : 'AIML_SIH_MINE (FastAPI Backend)'),
             featuresCount: data.features_count || 14,
             lastChecked: new Date().toLocaleTimeString('en-IN'),
             latencyMs: latency,
@@ -250,6 +274,7 @@ export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
     isConfigured: true,
     isConnected: true,
     isLocalServer: false,
+    isCloudServer: false,
     isEmbeddedEngine: true,
     endpoint: 'AIML_SIH_MINE (Client-Side Random Forest Engine)',
     healthEndpoint: `${baseUrl}/health`,
@@ -268,16 +293,18 @@ export function getMLConnectionStatus() {
 }
 
 export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
-  const targetUrl = mlConnectionStatus.isConnected && mlConnectionStatus.endpoint?.startsWith('http')
+  const activeEndpoint = mlConnectionStatus.isConnected && mlConnectionStatus.endpoint?.startsWith('http')
     ? mlConnectionStatus.endpoint
-    : `${baseUrl}/predict`;
+    : null;
 
-  const candidates = [targetUrl];
-  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/predict`)) {
-    candidates.push(`${window.location.origin}/predict`);
-  }
+  const candidates = [
+    activeEndpoint,
+    ...getCandidateEndpoints('/predict', baseUrl)
+  ].filter(Boolean);
 
-  for (const endpoint of candidates) {
+  const uniqueCandidates = [...new Set(candidates)];
+
+  for (const endpoint of uniqueCandidates) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1800);
@@ -309,10 +336,7 @@ export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
  * Polls the backend hardware registry for latest ESP32 / gateway telemetry packets.
  */
 export async function fetchHardwareSensorData(baseUrl = DEFAULT_BACKEND_URL) {
-  const candidates = [`${baseUrl}/api/sensors/data`];
-  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/api/sensors/data`)) {
-    candidates.push(`${window.location.origin}/api/sensors/data`);
-  }
+  const candidates = getCandidateEndpoints('/api/sensors/data', baseUrl);
 
   for (const url of candidates) {
     try {
@@ -346,10 +370,7 @@ export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_U
   const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   if (apiKey) headers['X-API-Key'] = apiKey;
 
-  const candidates = [`${baseUrl}/api/sensors/data`];
-  if (typeof window !== 'undefined' && window.location.origin && !candidates.includes(`${window.location.origin}/api/sensors/data`)) {
-    candidates.push(`${window.location.origin}/api/sensors/data`);
-  }
+  const candidates = getCandidateEndpoints('/api/sensors/data', baseUrl);
 
   for (const url of candidates) {
     try {
