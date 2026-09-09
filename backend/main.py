@@ -12,11 +12,25 @@ import uuid
 import base64
 import shutil
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Header
+from typing import Optional, Dict, List, Any
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Header, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+import httpx
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+import sys
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
+ML_API_URL = os.getenv("ML_API_URL", "http://localhost:8000").rstrip("/")
 
 from cv_engine import analyze_mine_blueprint_cv
 
@@ -297,6 +311,77 @@ class HardwareSensorIngestPayload(BaseModel):
     }
 
 
+class ESP32SensorDataPayload(BaseModel):
+    """
+    Dedicated ESP32 real-time hardware ingestion payload schema.
+    Validates required physical sensor measurements from the microcontroller.
+    """
+    node_id: str = Field(..., description="Unique node identifier (e.g. NODE_01)")
+    timestamp: Optional[str] = Field(None, description="ISO-8601 timestamp string")
+    vibration: float = Field(..., description="Ground dynamic vibration level / acceleration (m/s²)")
+    tilt: float = Field(..., description="Inclinometer tilt angle (degrees)")
+    temperature: float = Field(..., description="Ambient or rock surface temperature (°C)")
+    moisture: float = Field(..., description="Soil/strata moisture level (%)")
+    displacement: float = Field(..., description="Strata/roof displacement (mm)")
+
+    @field_validator("node_id")
+    @classmethod
+    def validate_node_id(cls, v: Any) -> str:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("node_id must be a non-empty string identifier")
+        return v.strip()
+
+    @field_validator("vibration")
+    @classmethod
+    def validate_vibration(cls, v: float) -> float:
+        if v < 0 or v > 150:
+            raise ValueError("vibration must be between 0.0 and 150.0 m/s2")
+        return round(float(v), 4)
+
+    @field_validator("tilt")
+    @classmethod
+    def validate_tilt(cls, v: float) -> float:
+        if v < -90 or v > 90:
+            raise ValueError("tilt must be between -90.0 and 90.0 degrees")
+        return round(float(v), 4)
+
+    @field_validator("temperature")
+    @classmethod
+    def validate_temperature(cls, v: float) -> float:
+        if v < -50 or v > 120:
+            raise ValueError("temperature must be between -50.0 and 120.0 °C")
+        return round(float(v), 2)
+
+    @field_validator("moisture")
+    @classmethod
+    def validate_moisture(cls, v: float) -> float:
+        if v < 0 or v > 100:
+            raise ValueError("moisture must be between 0.0 and 100.0 %")
+        return round(float(v), 2)
+
+    @field_validator("displacement")
+    @classmethod
+    def validate_displacement(cls, v: float) -> float:
+        if v < 0 or v > 1000:
+            raise ValueError("displacement must be between 0.0 and 1000.0 mm")
+        return round(float(v), 4)
+
+    model_config = {
+        "extra": "allow",
+        "json_schema_extra": {
+            "example": {
+                "node_id": "NODE_01",
+                "timestamp": "2026-09-10T10:30:00",
+                "vibration": 0.42,
+                "tilt": 2.1,
+                "temperature": 31.5,
+                "moisture": 45.2,
+                "displacement": 1.8
+            }
+        }
+    }
+
+
 def load_hardware_nodes() -> Dict[str, Dict]:
     """Loads all registered hardware sensor nodes from persistent JSON store."""
     if not os.path.exists(HARDWARE_NODES_FILE):
@@ -345,27 +430,32 @@ def clear_hardware_nodes():
             pass
 
 
-def hardware_to_ml_telemetry(payload: HardwareSensorIngestPayload) -> HardwareTelemetryInput:
+def hardware_to_ml_telemetry(payload: Any) -> HardwareTelemetryInput:
     """
     Transforms raw physical ESP32 sensor telemetry into the 14-dimensional
     representation expected by the existing ML model and /predict endpoint.
     Exclusively utilizes physics principles (PPV velocity integration, resultant vectors).
     """
-    vib = payload.vibration if payload.vibration is not None else 0.05
-    tilt_deg = payload.tilt if payload.tilt is not None else (payload.tilt_x_deg or 0.0)
+    vib = getattr(payload, "vibration", 0.05)
+    if vib is None:
+        vib = 0.05
+    raw_tilt = getattr(payload, "tilt", None)
+    tilt_deg = raw_tilt if raw_tilt is not None else getattr(payload, "tilt_x_deg", 0.0) or 0.0
     tilt_rad = math.radians(tilt_deg)
 
     # 3-axis dynamic accelerations (resolved from total resultant vibration & tilt angle)
     horiz_shear = abs(vib * math.sin(tilt_rad))
-    acc_x = payload.acc_x_ms2 if payload.acc_x_ms2 is not None else max(horiz_shear, vib / math.sqrt(3))
-    acc_y = payload.acc_y_ms2 if payload.acc_y_ms2 is not None else (vib / math.sqrt(3))
-    acc_z = payload.acc_z_ms2 if payload.acc_z_ms2 is not None else abs(vib * math.cos(tilt_rad))
+    acc_x_attr = getattr(payload, "acc_x_ms2", None)
+    acc_x = acc_x_attr if acc_x_attr is not None else max(horiz_shear, vib / math.sqrt(3))
+    acc_y_attr = getattr(payload, "acc_y_ms2", None)
+    acc_y = acc_y_attr if acc_y_attr is not None else (vib / math.sqrt(3))
+    acc_z_attr = getattr(payload, "acc_z_ms2", None)
+    acc_z = acc_z_attr if acc_z_attr is not None else abs(vib * math.cos(tilt_rad))
 
     # Peak Particle Velocity (PPV in mm/s):
-    # In ground vibration monitoring, PPV is the primary rock fracture criterion.
-    # Normal safe baseline (<2.0 mm/s) vs warning (2-4 mm/s) vs critical dynamic shock (>=4.0 mm/s).
-    if payload.ppv_mms is not None:
-        ppv = payload.ppv_mms
+    ppv_attr = getattr(payload, "ppv_mms", None)
+    if ppv_attr is not None:
+        ppv = ppv_attr
     else:
         if vib >= 0.8:
             ppv = 4.0 + (vib - 0.8) * 4.0  # High shock (>4.0 mm/s)
@@ -374,17 +464,24 @@ def hardware_to_ml_telemetry(payload: HardwareSensorIngestPayload) -> HardwareTe
         else:
             ppv = max(0.5, vib * 24.0)     # Nominal baseline (<2.0 mm/s)
 
-    freq = payload.frequency_hz if payload.frequency_hz is not None else round(18.0 + vib * 30.0, 2)
-    psd = payload.psd_value if payload.psd_value is not None else round(0.08 + (vib ** 2) * 2.5, 4)
-    geophone = payload.geophone_mms if payload.geophone_mms is not None else round(ppv * 0.65, 3)
-    seismo = payload.seismometer_ms2 if payload.seismometer_ms2 is not None else round(vib * 3.5, 3)
-    temp_c = payload.temperature if payload.temperature is not None else (payload.temperature_c or 28.0)
+    freq_attr = getattr(payload, "frequency_hz", None)
+    freq = freq_attr if freq_attr is not None else round(18.0 + vib * 30.0, 2)
+    psd_attr = getattr(payload, "psd_value", None)
+    psd = psd_attr if psd_attr is not None else round(0.08 + (vib ** 2) * 2.5, 4)
+    geo_attr = getattr(payload, "geophone_mms", None)
+    geophone = geo_attr if geo_attr is not None else round(ppv * 0.65, 3)
+    seis_attr = getattr(payload, "seismometer_ms2", None)
+    seismo = seis_attr if seis_attr is not None else round(vib * 3.5, 3)
+    temp_attr = getattr(payload, "temperature", None)
+    temp_c = temp_attr if temp_attr is not None else (getattr(payload, "temperature_c", None) or 28.0)
 
-    disp = payload.displacement if payload.displacement is not None else payload.displacement_mm
-    humidity_val = payload.moisture if payload.moisture is not None else (payload.humidity or payload.humidity_pct)
+    disp_attr = getattr(payload, "displacement", None)
+    disp = disp_attr if disp_attr is not None else getattr(payload, "displacement_mm", None)
+    moist_attr = getattr(payload, "moisture", None)
+    humidity_val = moist_attr if moist_attr is not None else (getattr(payload, "humidity", None) or getattr(payload, "humidity_pct", None))
 
     return HardwareTelemetryInput(
-        node_id=payload.node_id or "ESP32_NODE_01",
+        node_id=getattr(payload, "node_id", "ESP32_NODE_01") or "ESP32_NODE_01",
         acc_x_ms2=round(float(acc_x), 4),
         acc_y_ms2=round(float(acc_y), 4),
         acc_z_ms2=round(float(acc_z), 4),
@@ -394,37 +491,278 @@ def hardware_to_ml_telemetry(payload: HardwareSensorIngestPayload) -> HardwareTe
         geophone_mms=round(float(geophone), 3),
         seismometer_ms2=round(float(seismo), 3),
         temperature_c=round(float(temp_c), 1),
-        tilt_x_deg=round(float(tilt_deg), 2) if (payload.tilt is not None or payload.tilt_x_deg is not None) else None,
-        tilt_y_deg=payload.tilt_y_deg,
+        tilt_x_deg=round(float(tilt_deg), 2) if (raw_tilt is not None or getattr(payload, "tilt_x_deg", None) is not None) else None,
+        tilt_y_deg=getattr(payload, "tilt_y_deg", None),
         displacement_mm=round(float(disp), 3) if disp is not None else None,
-        crack_width_mm=payload.crack_width_mm,
+        crack_width_mm=getattr(payload, "crack_width_mm", None),
         humidity_pct=round(float(humidity_val), 1) if humidity_val is not None else None,
-        timestamp=payload.timestamp or datetime.now(timezone.utc).isoformat()
+        timestamp=getattr(payload, "timestamp", None) or datetime.now(timezone.utc).isoformat()
     )
 
 
+async def forward_to_ml_predict(telemetry_payload: Any, telemetry_input: HardwareTelemetryInput) -> Dict[str, Any]:
+    """
+    Forwards sensor values to the existing FastAPI ML service's /predict endpoint
+    using the exact schema expected by that ML service.
+    Configured dynamically via ML_API_URL environment variable.
+    Falls back gracefully to internal model / rule engine if external service is unreachable.
+    """
+    ml_forward_payload = {
+        "node_id": telemetry_input.node_id,
+        "timestamp": telemetry_input.timestamp,
+        "vibration": getattr(telemetry_payload, "vibration", None),
+        "tilt": getattr(telemetry_payload, "tilt", None),
+        "temperature": getattr(telemetry_payload, "temperature", None),
+        "moisture": getattr(telemetry_payload, "moisture", None),
+        "displacement": getattr(telemetry_payload, "displacement", None),
+        # Direct physical channels for strict ML pipeline schema matching
+        "acc_x_ms2": telemetry_input.acc_x_ms2,
+        "acc_y_ms2": telemetry_input.acc_y_ms2,
+        "acc_z_ms2": telemetry_input.acc_z_ms2,
+        "ppv_mms": telemetry_input.ppv_mms,
+        "frequency_hz": telemetry_input.frequency_hz,
+        "psd_value": telemetry_input.psd_value,
+        "geophone_mms": telemetry_input.geophone_mms,
+        "seismometer_ms2": telemetry_input.seismometer_ms2,
+        "temperature_c": telemetry_input.temperature_c,
+        "tilt_x_deg": telemetry_input.tilt_x_deg,
+        "tilt_y_deg": telemetry_input.tilt_y_deg,
+        "displacement_mm": telemetry_input.displacement_mm,
+        "humidity_pct": telemetry_input.humidity_pct,
+    }
+
+    # Attempt forwarding to ML service via HTTP POST if ML_API_URL is configured
+    if ML_API_URL:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.post(f"{ML_API_URL}/predict", json=ml_forward_payload)
+                if resp.status_code == 200:
+                    pred_json = resp.json()
+                    risk_lvl = pred_json.get("risk_level") or pred_json.get("prediction")
+                    if isinstance(risk_lvl, dict):
+                        risk_lvl = risk_lvl.get("risk") or risk_lvl.get("risk_level")
+                    risk_lvl = str(risk_lvl or "NORMAL").upper()
+                    if risk_lvl == "SAFE":
+                        risk_lvl = "NORMAL"
+
+                    conf = float(pred_json.get("confidence", 0.95))
+                    probs = pred_json.get("probabilities", {risk_lvl: conf})
+                    model_used = pred_json.get("model_used", "FastAPI ML Service (/predict)")
+
+                    return {
+                        "risk_level": risk_lvl,
+                        "confidence": round(conf, 4),
+                        "probabilities": probs,
+                        "model_used": model_used,
+                    }
+                else:
+                    print(f"[ML Forward Warning] {ML_API_URL}/predict returned status {resp.status_code}")
+        except Exception as forward_err:
+            print(f"[ML Forward Note] Could not connect to {ML_API_URL}/predict ({forward_err}). Falling back to internal engine.")
+
+    # Fallback to local prediction model / rule engine
+    try:
+        local_pred = predict(telemetry_input)
+        risk_lvl = str(local_pred.get("risk_level", "NORMAL")).upper()
+        if risk_lvl == "SAFE":
+            risk_lvl = "NORMAL"
+        return {
+            "risk_level": risk_lvl,
+            "confidence": round(float(local_pred.get("confidence", 0.95)), 4),
+            "probabilities": local_pred.get("probabilities", {}),
+            "model_used": local_pred.get("model_used", "Random Forest (Internal Fallback)"),
+        }
+    except Exception as local_err:
+        print(f"[Hardware Ingest] Local predict fallback error: {local_err}")
+        vib_val = getattr(telemetry_payload, "vibration", 0.05) or 0.05
+        ppv_val = telemetry_input.ppv_mms or 1.2
+        if ppv_val >= 4.0 or vib_val >= 0.8:
+            fb_risk = "CRITICAL"
+            fb_conf = 0.95
+        elif ppv_val >= 2.0 or vib_val >= 0.3:
+            fb_risk = "WARNING"
+            fb_conf = 0.81
+        else:
+            fb_risk = "NORMAL"
+            fb_conf = 0.98
+        return {
+            "risk_level": fb_risk,
+            "confidence": fb_conf,
+            "probabilities": {fb_risk: fb_conf},
+            "model_used": "Calibrated Geotechnical Rule Engine (Safe Exception Fallback)",
+        }
+
+
+# ─── REAL-TIME HARDWARE SENSOR INGESTION ENDPOINTS ─────────────────────
+
+@app.post("/api/sensor-data", tags=["Hardware Ingestion"], status_code=status.HTTP_200_OK)
+async def receive_esp32_sensor_data(
+    payload: ESP32SensorDataPayload,
+    x_api_key: Optional[str] = Header(None)
+):
+    """
+    Dedicated Real-Time Sensor Ingestion Endpoint for ESP32 & Hardware Microcontrollers.
+    
+    Data Flow:
+    1. Ingests and validates sensor JSON:
+       {
+         "node_id": "NODE_01",
+         "timestamp": "2026-09-10T10:30:00",
+         "vibration": 0.42,
+         "tilt": 2.1,
+         "temperature": 31.5,
+         "moisture": 45.2,
+         "displacement": 1.8
+       }
+    2. Validates optional X-API-Key against MINEGUARD_API_KEY if configured.
+    3. Forwards sensor telemetry to existing FastAPI ML service (/predict) at ML_API_URL.
+    4. Persists the node state for dashboard synchronization.
+    5. Returns response directly to ESP32:
+       {
+         "status": "success",
+         "node_id": "NODE_01",
+         "prediction": "WARNING",
+         "confidence": 0.81
+       }
+    """
+    # 1. Optional API Key verification
+    configured_key = os.getenv("MINEGUARD_API_KEY") or os.getenv("HARDWARE_API_KEY")
+    if configured_key and x_api_key != configured_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Missing or invalid X-API-Key header"
+        )
+
+    node_id = payload.node_id
+    ts = payload.timestamp or datetime.now(timezone.utc).isoformat()
+
+    # 2. Transform into physics telemetry representation
+    telemetry_input = hardware_to_ml_telemetry(payload)
+
+    # 3. Forward to external FastAPI ML service (/predict)
+    prediction_result = await forward_to_ml_predict(payload, telemetry_input)
+
+    risk_label = str(prediction_result.get("risk_level", "NORMAL")).upper()
+    if risk_label == "SAFE":
+        risk_label = "NORMAL"
+    confidence_val = round(float(prediction_result.get("confidence", 0.95)), 2)
+
+    sensor_data_dict = {
+        "vibration": payload.vibration,
+        "tilt": payload.tilt,
+        "temperature": payload.temperature,
+        "moisture": payload.moisture,
+        "displacement": payload.displacement,
+    }
+
+    # 4. Save into hardware node registry for React dashboard consumption
+    node_record = {
+        "node_id": node_id,
+        "timestamp": ts,
+        "sensor_data": sensor_data_dict,
+        "prediction": {
+            "risk": risk_label,
+            "confidence": confidence_val,
+            "probabilities": prediction_result.get("probabilities", {}),
+            "model_used": prediction_result.get("model_used", "Random Forest ML Service"),
+        },
+        "last_received": datetime.now(timezone.utc).isoformat(),
+    }
+    save_hardware_node_record(node_id, node_record)
+
+    # 5. Return standardized response to ESP32
+    return {
+        "status": "success",
+        "node_id": node_id,
+        "prediction": risk_label,
+        "confidence": confidence_val,
+    }
+
+
+@app.get("/api/sensor-data/latest", tags=["Hardware Ingestion"])
+def get_latest_sensor_data(node_id: Optional[str] = Query(None, description="Optional node_id filter")):
+    """
+    Returns latest sensor readings and ML prediction for active hardware nodes.
+    Exposes real-time telemetry to both verification tools and React admin dashboard.
+    """
+    nodes = load_hardware_nodes()
+    if not nodes:
+        return {
+            "status": "success",
+            "message": "No sensor telemetry received yet. Awaiting initial ESP32 transmission.",
+            "node_id": None,
+            "timestamp": None,
+            "sensor_data": None,
+            "prediction": None,
+            "confidence": None,
+            "nodes": {},
+            "total_nodes": 0,
+            "overall_risk": "NORMAL",
+        }
+
+    if node_id:
+        if node_id not in nodes:
+            raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
+        target = nodes[node_id]
+    else:
+        # Most recently updated node
+        target = max(
+            nodes.values(),
+            key=lambda n: n.get("timestamp") or n.get("last_received") or ""
+        )
+
+    # Determine highest risk category across all active nodes
+    overall_risk = "NORMAL"
+    for n in nodes.values():
+        r = n.get("prediction", {}).get("risk", "NORMAL")
+        if r == "CRITICAL":
+            overall_risk = "CRITICAL"
+        elif r == "WARNING" and overall_risk != "CRITICAL":
+            overall_risk = "WARNING"
+
+    p = target.get("prediction", {})
+    pred_str = p.get("risk") if isinstance(p, dict) else str(p)
+    conf_val = p.get("confidence") if isinstance(p, dict) else 0.95
+
+    return {
+        "status": "success",
+        "node_id": target.get("node_id"),
+        "timestamp": target.get("timestamp"),
+        "sensor_data": target.get("sensor_data"),
+        "prediction": pred_str,
+        "confidence": conf_val,
+        "overall_risk": overall_risk,
+        "total_nodes": len(nodes),
+        "nodes": nodes,
+    }
+
+
+@app.get("/api/sensor-data", tags=["Hardware Ingestion"])
+def get_sensor_data_summary():
+    """Alias endpoint for retrieving latest sensor data and node registry."""
+    return get_latest_sensor_data(node_id=None)
+
+
 @app.post("/api/sensors/data", tags=["Hardware Ingestion"])
-def ingest_hardware_sensor_data(
+async def ingest_hardware_sensor_data(
     payload: HardwareSensorIngestPayload,
     x_api_key: Optional[str] = Header(None)
 ):
     """
-    Dedicated Real-Time Hardware Sensor Ingestion Endpoint for ESP32 and LoRa Gateways.
+    Backward-compatible Hardware Sensor Ingestion Endpoint for ESP32 and LoRa Gateways.
     - Validates payload and optional API key
-    - Transforms hardware readings into 14-feature format for existing ML /predict service
-    - Forwards to existing ML model for real-time inference
+    - Transforms hardware readings into 14-feature format
+    - Forwards to ML service at ML_API_URL (/predict)
     - Persists node state for multi-node monitoring
     - Returns standardized sensor telemetry + ML prediction response
     """
-    # 1. Optional API key authentication
-    configured_key = os.getenv("MINEGUARD_API_KEY")
+    configured_key = os.getenv("MINEGUARD_API_KEY") or os.getenv("HARDWARE_API_KEY")
     if configured_key and x_api_key != configured_key:
         raise HTTPException(
             status_code=401,
             detail="Unauthorized: Missing or invalid X-API-Key header"
         )
 
-    # 2. Validation: Ensure at least one physical metric exists
     has_metric = any(v is not None for v in [
         payload.vibration, payload.tilt, payload.temperature,
         payload.moisture, payload.displacement, payload.acc_x_ms2,
@@ -436,7 +774,6 @@ def ingest_hardware_sensor_data(
             detail="Malformed sensor data: Payload contains no measurable physical sensor telemetry."
         )
 
-    # Validate physical bounds
     if payload.vibration is not None and (payload.vibration < 0 or payload.vibration > 150):
         raise HTTPException(status_code=422, detail="Validation error: vibration must be between 0 and 150 m/s2")
     if payload.displacement is not None and (payload.displacement < 0 or payload.displacement > 1000):
@@ -446,45 +783,17 @@ def ingest_hardware_sensor_data(
     if payload.moisture is not None and (payload.moisture < 0 or payload.moisture > 100):
         raise HTTPException(status_code=422, detail="Validation error: moisture must be between 0 and 100 %")
 
-    # 3. Normalize node_id and timestamp
     node_id = (payload.node_id or "ESP32_NODE_01").strip()
     ts = payload.timestamp or datetime.now(timezone.utc).isoformat()
     payload.node_id = node_id
     payload.timestamp = ts
 
-    # 4. Convert hardware payload to existing ML model input format
     telemetry_input = hardware_to_ml_telemetry(payload)
+    prediction_result = await forward_to_ml_predict(payload, telemetry_input)
 
-    # 5. Forward to existing ML prediction service
-    try:
-        prediction_result = predict(telemetry_input)
-    except Exception as err:
-        print(f"[Hardware Ingest Error] ML prediction failure, falling back to rule engine: {err}")
-        # Safe fallback without crashing
-        vib_val = payload.vibration or 0.05
-        ppv_val = telemetry_input.ppv_mms or 1.2
-        if ppv_val >= 4.0 or vib_val >= 0.8:
-            fallback_risk = "CRITICAL"
-            fallback_conf = 0.95
-        elif ppv_val >= 2.0 or vib_val >= 0.3:
-            fallback_risk = "WARNING"
-            fallback_conf = 0.90
-        else:
-            fallback_risk = "NORMAL"
-            fallback_conf = 0.98
-
-        prediction_result = {
-            "risk_level": fallback_risk,
-            "confidence": fallback_conf,
-            "probabilities": {fallback_risk: fallback_conf},
-            "model_used": "Calibrated Geotechnical Rule Engine (Safe Exception Fallback)",
-        }
-
-    # Normalize risk label to "NORMAL" | "WARNING" | "CRITICAL"
     risk_label = str(prediction_result.get("risk_level", "NORMAL")).upper()
     if risk_label == "SAFE":
         risk_label = "NORMAL"
-
     confidence = round(float(prediction_result.get("confidence", 0.95)), 4)
 
     sensor_data_dict = {
@@ -495,7 +804,6 @@ def ingest_hardware_sensor_data(
         "displacement": round(payload.displacement, 4) if payload.displacement is not None else (round(telemetry_input.displacement_mm, 4) if telemetry_input.displacement_mm is not None else 0.2),
     }
 
-    # 6. Save in hardware node registry
     node_record = {
         "node_id": node_id,
         "timestamp": ts,
@@ -504,14 +812,13 @@ def ingest_hardware_sensor_data(
             "risk": risk_label,
             "confidence": confidence,
             "probabilities": prediction_result.get("probabilities", {}),
-            "model_used": prediction_result.get("model_used", "Random Forest (Trained Joblib Bundle)"),
+            "model_used": prediction_result.get("model_used", "Random Forest ML Service"),
         },
         "derived_features": prediction_result.get("derived_features", {}),
         "last_received": datetime.now(timezone.utc).isoformat(),
     }
     save_hardware_node_record(node_id, node_record)
 
-    # 7. Standardized response matching exact specification
     return {
         "node_id": node_id,
         "timestamp": ts,
@@ -520,9 +827,10 @@ def ingest_hardware_sensor_data(
             "risk": risk_label,
             "confidence": confidence,
             "probabilities": prediction_result.get("probabilities", {}),
-            "model_used": prediction_result.get("model_used", "Random Forest (Trained Joblib Bundle)"),
+            "model_used": prediction_result.get("model_used", "Random Forest ML Service"),
         }
     }
+
 
 
 @app.get("/api/sensors/data", tags=["Hardware Ingestion"])
@@ -1284,5 +1592,8 @@ def analyze_blueprint_endpoint(data: BlueprintAnalysisInput):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    print(f"[Backend Server] Starting on {host}:{port}, forwarding ML to {ML_API_URL}")
+    uvicorn.run(app, host=host, port=port)
 

@@ -268,68 +268,79 @@ The dashboard provides seamless switching between **Virtual Simulation** and **R
 
 ### 🌐 Ingestion Endpoints
 
-| Environment | Protocol | Endpoint URL | Binding |
+| Environment | Protocol | Ingestion Endpoint URL | Latest Telemetry Endpoint |
 |---|---|---|---|
-| **Local Wi-Fi / LAN Testing** | `HTTP` | `http://<YOUR_COMPUTER_LOCAL_IP>:8000/api/sensors/data` | `0.0.0.0:8000` |
-| **Production / Cloud** | `HTTPS` | `https://<YOUR_DOMAIN>/api/sensors/data` | Reverse Proxy / SSL Port 443 |
+| **Local Wi-Fi / LAN Testing** | `HTTP` | `http://<YOUR_COMPUTER_LOCAL_IP>:8000/api/sensor-data` | `http://<YOUR_COMPUTER_LOCAL_IP>:8000/api/sensor-data/latest` |
+| **Production / Cloud** | `HTTPS` | `https://<YOUR_DOMAIN>/api/sensor-data` | `https://<YOUR_DOMAIN>/api/sensor-data/latest` |
 
 > **Find your computer's local IP on Windows**: Open PowerShell and run `ipconfig` (e.g. `192.168.1.100` or `10.0.0.x`). Ensure your ESP32 is connected to the same Wi-Fi network.
 
 ---
 
-### 📥 Hardware Ingestion Specification
+### 📥 Hardware Ingestion Specification (`POST /api/sensor-data`)
 
 #### Headers
 ```http
 Content-Type: application/json
-X-API-Key: sih-mine-secret-key-2026   (Optional: for secured industrial deployments)
+X-API-Key: sih-mine-secret-key-2026   (Optional: only if MINEGUARD_API_KEY is configured)
 ```
 
-#### JSON Request Body Format
+#### JSON Request Body Format (Sent by ESP32)
 ```json
 {
-  "node_id": "ESP32_NODE_01",
-  "vibration": 0.05,
-  "tilt": 0.08,
-  "temperature": 27.0,
-  "moisture": 20.0,
-  "displacement": 0.2
+  "node_id": "NODE_01",
+  "timestamp": "2026-09-10T10:30:00",
+  "vibration": 0.42,
+  "tilt": 2.1,
+  "temperature": 31.5,
+  "moisture": 45.2,
+  "displacement": 1.8
 }
 ```
 
-| Field | Type | Units | Nominal / Safe Range | Warning Range | Critical Range |
-|---|---|---|---|---|---|
-| `node_id` | `string` | ID tag | `ESP32_NODE_01`... | Any string identifier | Unique per sensor |
-| `vibration` | `float` | g or m/s² | `0.00` – `0.15` | `0.50` – `1.50` | `> 2.00` |
-| `tilt` | `float` | degrees (°) | `0.00` – `0.20` | `1.00` – `2.50` | `> 3.50` |
-| `temperature` | `float` | °Celsius | `20.0` – `32.0` | `35.0` – `42.0` | `> 45.0` |
-| `moisture` | `float` | % Relative | `10.0` – `30.0` | `40.0` – `60.0` | `> 70.0` |
-| `displacement` | `float` | mm | `0.00` – `0.50` | `5.00` – `12.00` | `> 15.00` |
+| Field | Type | Required | Units | Nominal / Safe Range | Warning Range | Critical Range |
+|---|---|---|---|---|---|---|
+| `node_id` | `string` | **Yes** | ID tag | `NODE_01`... | Any string identifier | Unique per sensor node |
+| `timestamp` | `string` | No (Auto) | ISO-8601 | `2026-09-10T10:30:00` | Auto-generated if omitted | Observation time |
+| `vibration` | `float` | **Yes** | m/s² or g | `0.00` – `0.15` | `0.30` – `0.80` | `> 0.80` |
+| `tilt` | `float` | **Yes** | degrees (°) | `0.00` – `0.20` | `1.00` – `2.50` | `> 3.50` |
+| `temperature` | `float` | **Yes** | °Celsius | `20.0` – `32.0` | `35.0` – `42.0` | `> 45.0` |
+| `moisture` | `float` | **Yes** | % Relative | `10.0` – `30.0` | `40.0` – `60.0` | `> 70.0` |
+| `displacement` | `float` | **Yes** | mm | `0.00` – `0.50` | `1.00` – `3.00` | `> 4.00` |
 
-#### JSON Response Schema
+#### JSON Response Returned to ESP32
 ```json
 {
-  "node_id": "ESP32_NODE_01",
-  "timestamp": "2026-09-08T11:10:33.237756+00:00",
+  "status": "success",
+  "node_id": "NODE_01",
+  "prediction": "WARNING",
+  "confidence": 0.81
+}
+```
+
+---
+
+### 📤 Latest Telemetry & Dashboard Polling (`GET /api/sensor-data/latest`)
+Returns the latest sensor telemetry, ML prediction, and all registered nodes for real-time dashboard sync:
+```json
+{
+  "status": "success",
+  "node_id": "NODE_01",
+  "timestamp": "2026-09-10T10:30:00",
   "sensor_data": {
-    "vibration": 0.05,
-    "tilt": 0.08,
-    "temperature": 27.0,
-    "moisture": 20.0,
-    "displacement": 0.2
+    "vibration": 0.42,
+    "tilt": 2.1,
+    "temperature": 31.5,
+    "moisture": 45.2,
+    "displacement": 1.8
   },
-  "prediction": {
-    "risk": "NORMAL",
-    "confidence": 0.9856,
-    "probabilities": {
-      "NORMAL": 0.9856,
-      "WARNING": 0.0100,
-      "CRITICAL": 0.0044
-    },
-    "model_used": "Random Forest (Trained Joblib Bundle)"
-  }
+  "prediction": "WARNING",
+  "confidence": 0.81,
+  "overall_risk": "WARNING",
+  "total_nodes": 1,
 }
 ```
+
 
 ---
 
@@ -337,10 +348,11 @@ X-API-Key: sih-mine-secret-key-2026   (Optional: for secured industrial deployme
 
 #### 1. Send Normal Baseline Telemetry
 ```bash
-curl -X POST "http://localhost:8000/api/sensors/data" \
+curl -X POST "http://localhost:8000/api/sensor-data" \
   -H "Content-Type: application/json" \
   -d '{
-    "node_id": "ESP32_NODE_01",
+    "node_id": "NODE_01",
+    "timestamp": "2026-09-10T10:30:00",
     "vibration": 0.05,
     "tilt": 0.08,
     "temperature": 27.0,
@@ -351,10 +363,11 @@ curl -X POST "http://localhost:8000/api/sensors/data" \
 
 #### 2. Send Critical Subsidence Telemetry (Triggers Alarm)
 ```bash
-curl -X POST "http://localhost:8000/api/sensors/data" \
+curl -X POST "http://localhost:8000/api/sensor-data" \
   -H "Content-Type: application/json" \
   -d '{
-    "node_id": "ESP32_NODE_02",
+    "node_id": "NODE_02",
+    "timestamp": "2026-09-10T10:30:00",
     "vibration": 2.45,
     "tilt": 4.20,
     "temperature": 48.0,
@@ -363,9 +376,9 @@ curl -X POST "http://localhost:8000/api/sensors/data" \
   }'
 ```
 
-#### 3. View All Active Hardware Nodes
+#### 3. View Latest Sensor Telemetry & ML Prediction
 ```bash
-curl -X GET "http://localhost:8000/api/sensors/data"
+curl -X GET "http://localhost:8000/api/sensor-data/latest"
 ```
 
 ---
@@ -379,7 +392,7 @@ const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
 // Replace with your PC's LAN IP or production domain
-const char* serverUrl = "http://192.168.1.100:8000/api/sensors/data";
+const char* serverUrl = "http://192.168.1.100:8000/api/sensor-data";
 
 void setup() {
   Serial.begin(115200);

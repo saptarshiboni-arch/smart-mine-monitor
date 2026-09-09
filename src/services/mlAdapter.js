@@ -2,7 +2,7 @@
 // Prepares physical sensor payload matching the Kaggle/ESP32 14-feature architecture
 // Handles live connection status, backend health check, and model inference fallback.
 
-const DEFAULT_BACKEND_URL = 'http://localhost:8000';
+const DEFAULT_BACKEND_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_BACKEND_URL) || 'http://localhost:8000';
 
 let mlConnectionStatus = {
   isConfigured: true,
@@ -287,11 +287,21 @@ export async function fetchHardwareSensorData(baseUrl = DEFAULT_BACKEND_URL) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1800);
 
-    const res = await fetch(`${baseUrl}/api/sensors/data`, {
+    // Query dedicated /api/sensor-data/latest with fallback to /api/sensors/data
+    let res = await fetch(`${baseUrl}/api/sensor-data/latest`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       signal: controller.signal,
     });
+
+    if (!res.ok) {
+      res = await fetch(`${baseUrl}/api/sensors/data`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
+      });
+    }
+
     clearTimeout(timeoutId);
 
     if (res.ok) {
@@ -304,7 +314,7 @@ export async function fetchHardwareSensorData(baseUrl = DEFAULT_BACKEND_URL) {
 }
 
 /**
- * Sends a real or simulated hardware reading to /api/sensors/data
+ * Sends a real or simulated hardware reading to /api/sensor-data
  */
 export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_URL, apiKey = null) {
   const headers = { 'Content-Type': 'application/json' };
@@ -313,12 +323,21 @@ export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_U
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch(`${baseUrl}/api/sensors/data`, {
+    let res = await fetch(`${baseUrl}/api/sensor-data`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
+
+    if (!res.ok) {
+      res = await fetch(`${baseUrl}/api/sensors/data`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    }
     clearTimeout(timeoutId);
 
     if (res.ok) {
