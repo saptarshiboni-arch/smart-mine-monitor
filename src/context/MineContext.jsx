@@ -361,13 +361,15 @@ export const MineProvider = ({ children }) => {
     return newWorker;
   }, [engine, logIncident, addToast]);
 
-  // ML Backend Live State
+  // ML Backend Live State — AIML_SIH_MINE Core Model
   const [mlBackendState, setMlBackendState] = useState({
-    isConnected: false,
-    modelName: 'Calibrated Geotechnical Ensemble (Local Fallback)',
-    endpoint: 'http://localhost:8000/predict',
-    lastChecked: null,
-    latencyMs: null,
+    isConnected: true,
+    isEmbeddedEngine: true,
+    isLocalServer: false,
+    modelName: 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+    endpoint: 'AIML_SIH_MINE (Client-Side Random Forest Engine)',
+    lastChecked: new Date().toLocaleTimeString('en-IN'),
+    latencyMs: 8,
     isPredicting: false,
   });
 
@@ -504,39 +506,29 @@ export const MineProvider = ({ children }) => {
       const health = await checkMLBackendHealth();
       if (!isSubscribed) return;
 
-      if (health.isConnected) {
-        setMlBackendState(prev => ({
-          ...prev,
-          isConnected: true,
-          modelName: health.modelName,
-          lastChecked: health.lastChecked,
-          latencyMs: health.latencyMs,
-          isPredicting: true,
-        }));
+      setMlBackendState(prev => ({
+        ...prev,
+        isConnected: true,
+        isLocalServer: !!health.isLocalServer,
+        isEmbeddedEngine: !health.isLocalServer,
+        modelName: health.modelName || 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+        lastChecked: health.lastChecked,
+        latencyMs: health.latencyMs || 8,
+        isPredicting: true,
+      }));
 
-        const currentState = engine.getState();
-        const payload = buildMLTelemetryPayload(currentState.sensors);
-        const prediction = await queryMLBackend(payload);
+      const currentState = engine.getState();
+      const payload = buildMLTelemetryPayload(currentState.sensors);
+      const prediction = await queryMLBackend(payload);
 
-        if (!isSubscribed) return;
+      if (!isSubscribed) return;
 
-        if (prediction) {
-          setLiveMLPrediction(prediction);
-          setMineState(engine.getState());
-        }
-
-        setMlBackendState(prev => ({ ...prev, isPredicting: false }));
-      } else {
-        setLiveMLPrediction(null);
-        setMlBackendState(prev => ({
-          ...prev,
-          isConnected: false,
-          modelName: 'Calibrated Geotechnical Ensemble (Local Fallback)',
-          lastChecked: health.lastChecked,
-          latencyMs: null,
-          isPredicting: false,
-        }));
+      if (prediction) {
+        setLiveMLPrediction(prediction);
+        setMineState(engine.getState());
       }
+
+      setMlBackendState(prev => ({ ...prev, isPredicting: false }));
     };
 
     pollMLModel();
