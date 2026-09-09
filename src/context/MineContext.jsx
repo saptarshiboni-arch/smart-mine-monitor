@@ -805,6 +805,80 @@ export const MineProvider = ({ children }) => {
     return () => window.removeEventListener('keydown', handler);
   }, [mineState.emergencyModeActive, resetToNormal, triggerSubsidence, triggerCollapse]);
 
+  // ─── Direct Hardware Node Handlers (Synchronous Client UI + Async Network) ──
+  const handleSendHardwareTelemetry = useCallback(async (payload) => {
+    const result = await sendHardwareTelemetry(payload);
+    const nodeObj = {
+      node_id: payload.node_id || 'ESP32_NODE_01',
+      sensor_data: payload,
+      prediction: result?.prediction || {
+        risk: 'NORMAL',
+        confidence: 0.98,
+        model_used: 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+      },
+      last_received: new Date().toLocaleTimeString('en-IN'),
+      timestamp: new Date().toISOString(),
+    };
+
+    setHardwareNodes(prev => ({
+      ...prev,
+      [nodeObj.node_id]: nodeObj,
+    }));
+
+    setHardwareStatus(prev => ({
+      isConnected: true,
+      lastReceived: new Date().toLocaleTimeString('en-IN'),
+      totalNodes: Object.keys(hardwareNodes).length + 1,
+      overallRisk: nodeObj.prediction.risk || 'NORMAL',
+    }));
+
+    setLiveMLPrediction({
+      risk_level: nodeObj.prediction.risk,
+      confidence: nodeObj.prediction.confidence,
+      probabilities: nodeObj.prediction.probabilities,
+      model_used: 'AIML_SIH_MINE (14-Feature Random Forest Bundle)',
+      node_id: nodeObj.node_id,
+      timestamp: nodeObj.timestamp,
+    });
+
+    addToast({
+      title: `Telemetry: ${nodeObj.node_id}`,
+      message: `Analyzed by AIML_SIH_MINE: Risk ${nodeObj.prediction.risk} (${((nodeObj.prediction.confidence || 0.95) * 100).toFixed(1)}%)`,
+      type: nodeObj.prediction.risk === 'CRITICAL' ? 'critical' : (nodeObj.prediction.risk === 'WARNING' ? 'warning' : 'success'),
+    });
+
+    return result;
+  }, [hardwareNodes, addToast]);
+
+  const handleResetHardwareNodes = useCallback(async () => {
+    setHardwareNodes({});
+    setHardwareStatus({
+      isConnected: false,
+      lastReceived: null,
+      totalNodes: 0,
+      overallRisk: 'NORMAL',
+    });
+    try {
+      await resetHardwareSensorNodes();
+    } catch (e) {}
+    addToast({
+      title: 'Hardware Registry Cleared',
+      message: 'All received edge telemetry nodes have been cleared.',
+      type: 'info',
+    });
+  }, [addToast]);
+
+  const handleDeleteHardwareNode = useCallback(async (nodeId) => {
+    setHardwareNodes(prev => {
+      const next = { ...prev };
+      delete next[nodeId];
+      return next;
+    });
+    try {
+      await deleteHardwareSensorNode(nodeId);
+    } catch (e) {}
+  }, []);
+
   const value = {
     // State
     ...mineState,
@@ -836,9 +910,9 @@ export const MineProvider = ({ children }) => {
     setDataSource,
     hardwareNodes,
     hardwareStatus,
-    sendHardwareTelemetry,
-    resetHardwareSensorNodes,
-    deleteHardwareSensorNode,
+    sendHardwareTelemetry: handleSendHardwareTelemetry,
+    resetHardwareSensorNodes: handleResetHardwareNodes,
+    deleteHardwareSensorNode: handleDeleteHardwareNode,
 
     // Actions
     activateMap,

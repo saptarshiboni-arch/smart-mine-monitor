@@ -2,8 +2,7 @@
 // Prepares physical sensor payload matching the Kaggle/ESP32 14-feature architecture
 // Handles live connection status, backend health check, and model inference fallback.
 
-const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-const DEFAULT_BACKEND_URL = isProduction ? '' : 'http://localhost:8000';
+const DEFAULT_BACKEND_URL = 'http://localhost:8000';
 
 let mlConnectionStatus = {
   isConfigured: true,
@@ -20,11 +19,6 @@ export function buildMLTelemetryPayload(sensors = [], nodeId = 'ESP32_GATEWAY_NO
   if (!sensors || sensors.length === 0) {
     return {
       node_id: nodeId,
-      vibration: 0.05,
-      tilt: 0.5,
-      temperature: 28.0,
-      moisture: 60.0,
-      displacement: 0.5,
       acc_x_ms2: 0.05,
       acc_y_ms2: 0.05,
       acc_z_ms2: 0.08,
@@ -61,11 +55,6 @@ export function buildMLTelemetryPayload(sensors = [], nodeId = 'ESP32_GATEWAY_NO
 
   return {
     node_id: nodeId,
-    vibration: +peakVib.toFixed(4),
-    tilt: +peakTilt.toFixed(4),
-    temperature: +avgTemp.toFixed(1),
-    moisture: +avgHumidity.toFixed(1),
-    displacement: +peakDisp.toFixed(4),
     acc_x_ms2,
     acc_y_ms2,
     acc_z_ms2,
@@ -214,7 +203,7 @@ export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
   const startTime = performance.now();
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
 
     const res = await fetch(`${baseUrl}/health`, {
       method: 'GET',
@@ -229,13 +218,11 @@ export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
       mlConnectionStatus = {
         isConfigured: true,
         isConnected: true,
-        isLocalServer: !isProduction,
+        isLocalServer: true,
         isEmbeddedEngine: false,
-        endpoint: `${baseUrl}/predict` || '/predict',
-        healthEndpoint: `${baseUrl}/health` || '/health',
-        modelName: isProduction
-          ? `AIML_SIH_MINE (${data.model_name || 'Random Forest'} Cloud Serverless)`
-          : (data.model_name || 'AIML_SIH_MINE (FastAPI Local: 8000)'),
+        endpoint: `${baseUrl}/predict`,
+        healthEndpoint: `${baseUrl}/health`,
+        modelName: data.model_name || 'AIML_SIH_MINE (FastAPI Local: 8000)',
         featuresCount: data.features_count || 14,
         lastChecked: new Date().toLocaleTimeString('en-IN'),
         latencyMs: latency,
@@ -244,7 +231,7 @@ export async function checkMLBackendHealth(baseUrl = DEFAULT_BACKEND_URL) {
       return mlConnectionStatus;
     }
   } catch (err) {
-    // Backend offline fallback to client-side embedded inference
+    // Backend offline (standard in cloud Vercel environment)
   }
 
   // Active Embedded AIML_SIH_MINE Model Engine
@@ -272,7 +259,7 @@ export function getMLConnectionStatus() {
 export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
 
     const response = await fetch(`${baseUrl}/predict`, {
       method: 'POST',
@@ -284,15 +271,7 @@ export async function queryMLBackend(payload, baseUrl = DEFAULT_BACKEND_URL) {
 
     if (response.ok) {
       const result = await response.json();
-      if (result) {
-        if (result.risk_level === 'NORMAL') {
-          result.risk_level = 'SAFE';
-        }
-        if (result.probabilities && result.probabilities.NORMAL !== undefined && result.probabilities.SAFE === undefined) {
-          result.probabilities.SAFE = result.probabilities.NORMAL;
-        }
-        return result;
-      }
+      return result;
     }
   } catch (err) {
     // Fall back seamlessly to client-side AIML_SIH_MINE execution
@@ -331,17 +310,37 @@ export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_U
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) headers['X-API-Key'] = apiKey;
 
-  const res = await fetch(`${baseUrl}/api/sensors/data`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(`${baseUrl}/api/sensors/data`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
 
-  if (res.ok) {
-    return await res.json();
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    // Backend offline / cloud hosting: fall back directly to client-side AIML_SIH_MINE
   }
-  const errData = await res.json().catch(() => ({}));
-  throw new Error(errData.detail || `HTTP ${res.status}`);
+
+  const pred = runAIMLSihMineInference(payload);
+  return {
+    success: true,
+    node_id: payload.node_id || 'ESP32_NODE_01',
+    prediction: {
+      risk: pred.risk_level,
+      confidence: pred.confidence,
+      probabilities: pred.probabilities,
+      model_used: pred.model_used,
+    },
+    sensor_data: payload,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 /**

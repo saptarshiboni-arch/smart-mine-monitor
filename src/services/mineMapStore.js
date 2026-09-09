@@ -167,8 +167,7 @@ export function saveCustomMap(mapData) {
   }
 }
 
-const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-const BACKEND_API_BASE = isProduction ? '' : 'http://localhost:8000';
+const BACKEND_API_BASE = 'http://localhost:8000';
 
 /**
  * Fetch list of all mine maps from backend (Mine Map Files section)
