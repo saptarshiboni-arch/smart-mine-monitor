@@ -74,10 +74,24 @@ export default function MinerDetailPopup({ worker, route, onClose, onHighlightRo
     return { x: 750, y: 85 };
   });
 
+  // Clamp position to visible viewport when worker changes or opens
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const popupWidth = 325;
+      const maxX = Math.max(16, window.innerWidth - popupWidth - 16);
+      const maxY = Math.max(16, window.innerHeight - 450);
+      setPosition((prev) => ({
+        x: Math.min(Math.max(16, prev.x), maxX),
+        y: Math.min(Math.max(16, prev.y), maxY),
+      }));
+    }
+  }, [worker?.id]);
+
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0 });
 
   const handlePointerDown = (e) => {
+    e.stopPropagation();
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) return;
 
@@ -167,7 +181,9 @@ export default function MinerDetailPopup({ worker, route, onClose, onHighlightRo
 
   const popupElement = (
     <div
-      className={`fixed z-50 w-[320px] rounded-2xl overflow-hidden backdrop-blur-xl select-none transition-shadow ${
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      className={`fixed z-[100] w-[320px] rounded-2xl overflow-hidden backdrop-blur-xl select-none transition-shadow ${
         isDragging ? 'shadow-2xl ring-2 ring-cyan-400/50' : ''
       }`}
       style={{

@@ -74,6 +74,8 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
     relocateWorker,
     selectedSensor,
     setSelectedSensor,
+    selectedWorker,
+    setSelectedWorker,
     isDarkMode,
     setIsAddMinerModalOpen,
     activeMap,
@@ -114,6 +116,14 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
   const [inspectedWorker, setInspectedWorker] = useState(null);
   const [inspectedStation, setInspectedStation] = useState(null);
   const [selectedRouteWorkerId, setSelectedRouteWorkerId] = useState(null);
+
+  // Sync inspectedWorker if selectedWorker changes from elsewhere in the app
+  useEffect(() => {
+    if (selectedWorker) {
+      setInspectedWorker(selectedWorker);
+      setSelectedRouteWorkerId(selectedWorker.id);
+    }
+  }, [selectedWorker]);
 
   // ─── Map Geometry ──────────────────────────────────────────────────────────
   const currentJunctions = activeMap?.junctions || MINE_NODES;
@@ -269,23 +279,39 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
   // ─── Pointer Pan ──────────────────────────────────────────────────────────
   const handlePointerDown = (e) => {
     if (e.button !== 0) return;
-    dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, hasMoved: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      hasMoved: false,
+    };
+    // Do not call setPointerCapture here — early capture intercepts clicks on SVG children
   };
 
   const handlePointerMove = (e) => {
     if (!dragRef.current.active) return;
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
-    if (Math.hypot(dx, dy) > 3) dragRef.current.hasMoved = true;
-    if (dragRef.current.hasMoved) {
+    if (Math.hypot(dx, dy) > 5) {
+      if (!dragRef.current.hasMoved) {
+        dragRef.current.hasMoved = true;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch (err) {}
+      }
       setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
     }
   };
 
   const handlePointerUp = (e) => {
     dragRef.current.active = false;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch (err) {}
   };
 
   // ─── Double-Click Zoom ────────────────────────────────────────────────────
@@ -893,34 +919,83 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
                     const wy = parentNode.y - 24 - offsetY;
                     const showExpandedLabel = lodTier === LOD.DETAILED;
 
+                    const handleWorkerSelect = (e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setInspectedWorker(w);
+                      setSelectedWorker?.(w);
+                      setSelectedRouteWorkerId(w.id);
+                      setInspectedTunnel(null);
+                      setInspectedNode(null);
+                      setInspectedStation(null);
+                    };
+
                     return (
-                      <g key={w.id} transform={`translate(${wx}, ${wy})`}
-                        onClick={(e) => { e.stopPropagation(); if (dragRef.current.hasMoved) return; setInspectedWorker(w); setSelectedRouteWorkerId(w.id); setInspectedTunnel(null); setInspectedNode(null); setInspectedStation(null); }}
-                        className="cursor-pointer">
-                        {isSelected && <circle r="9" fill="none" stroke="#06B6D4" strokeWidth="2" opacity="0.9" />}
+                      <g
+                        key={w.id}
+                        transform={`translate(${wx}, ${wy})`}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                        }}
+                        onClick={handleWorkerSelect}
+                        className="cursor-pointer group"
+                      >
+                        {/* Generous transparent hit areas so clicking anywhere around the miner registers cleanly */}
+                        <circle r="16" fill="#000000" fillOpacity="0" pointerEvents="all" />
+                        <rect x="-18" y="-14" width="36" height="44" fill="#000000" fillOpacity="0" pointerEvents="all" />
+
+                        {/* Selection & hover halos */}
+                        {isSelected && <circle r="10" fill="none" stroke="#06B6D4" strokeWidth="2.5" opacity="0.95" />}
+                        <circle
+                          r="9"
+                          fill="none"
+                          stroke={isEvac ? '#EF4444' : '#06B6D4'}
+                          strokeWidth="1.5"
+                          opacity="0"
+                          className="group-hover:opacity-60 transition-opacity"
+                        />
                         {isEvac && (
                           <circle r="8" fill="none" stroke="#C4362E" strokeWidth="1.5">
                             <animate attributeName="r" values="6;12;6" dur="1.2s" repeatCount="indefinite" />
                             <animate attributeName="opacity" values="0.8;0.1;0.8" dur="1.2s" repeatCount="indefinite" />
                           </circle>
                         )}
-                        <circle r="5.5" fill={isEvac ? '#C4362E' : isSelected ? '#06B6D4' : '#2D323E'} stroke="#FFFFFF" strokeWidth="1.5" />
-                        <text textAnchor="middle" y="2.5" fontSize="4.5" fontWeight="bold" fill="#FFFFFF">⛏</text>
+                        <circle
+                          r="6"
+                          fill={isEvac ? '#C4362E' : isSelected ? '#06B6D4' : '#2D323E'}
+                          stroke="#FFFFFF"
+                          strokeWidth="1.5"
+                          className="group-hover:scale-110 transition-transform origin-center"
+                        />
+                        <text textAnchor="middle" y="2.5" fontSize="4.5" fontWeight="bold" fill="#FFFFFF" pointerEvents="none">⛏</text>
 
                         {/* Miner ID — always visible if group is small enough */}
                         {(isSelected || groupSize <= 3) && (
-                          <text textAnchor="middle" y="15" fontSize="6" fontWeight="700"
+                          <text
+                            textAnchor="middle"
+                            y="15"
+                            fontSize="6"
+                            fontWeight="700"
                             fill={isEvac ? '#C4362E' : isSelected ? '#06B6D4' : isDarkMode ? '#EDEAE4' : '#292722'}
-                            fontFamily="Inter, sans-serif">
+                            fontFamily="Inter, sans-serif"
+                            pointerEvents="none"
+                          >
                             {w.id}
                           </text>
                         )}
 
                         {/* Expanded name badge at DETAILED zoom */}
                         {showExpandedLabel && (
-                          <text textAnchor="middle" y="24" fontSize="5.5" fontWeight="600"
-                            fill={isDarkMode ? '#64748B' : '#64748B'} fontFamily="Inter, sans-serif"
-                            style={{ opacity: 1, transition: 'opacity 0.25s ease' }}>
+                          <text
+                            textAnchor="middle"
+                            y="24"
+                            fontSize="5.5"
+                            fontWeight="600"
+                            fill={isDarkMode ? '#94A3B8' : '#64748B'}
+                            fontFamily="Inter, sans-serif"
+                            pointerEvents="none"
+                            style={{ opacity: 1, transition: 'opacity 0.25s ease' }}
+                          >
                             {w.name?.split(' ')[0] || ''}
                           </text>
                         )}
@@ -1028,8 +1103,14 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
           <MinerDetailPopup
             worker={workers.find((w) => w.id === inspectedWorker.id) || inspectedWorker}
             route={workerRoutes[inspectedWorker.id] || activeRoute}
-            onClose={() => setInspectedWorker(null)}
-            onHighlightRoute={(workerId) => setSelectedRouteWorkerId(workerId)}
+            onClose={() => {
+              setInspectedWorker(null);
+              setSelectedWorker?.(null);
+            }}
+            onHighlightRoute={(workerId) => {
+              setSelectedRouteWorkerId(workerId);
+              setShowEmergencyRoutes(true);
+            }}
           />
         )}
       </div>
