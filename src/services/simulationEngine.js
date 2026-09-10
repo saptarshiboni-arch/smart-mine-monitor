@@ -10,7 +10,7 @@ const HISTORY_LENGTH = 30;
 export function createSimulationEngine() {
   // Deep clone initial data
   let sensors = JSON.parse(JSON.stringify(INITIAL_SENSORS));
-  let workers = JSON.parse(JSON.stringify(INITIAL_WORKERS));
+  let workers = [];
   let tunnelStates = {};
   MINE_TUNNELS.forEach(t => {
     tunnelStates[t.id] = { riskLevel: 'SAFE', status: 'OPEN' };
@@ -25,7 +25,7 @@ export function createSimulationEngine() {
   let tickCount = 0;
   let alerts = [];
   let workerRoutes = {};
-  let activeRouteWorkerId = 'W-003'; // Default to Zone B worker
+  let activeRouteWorkerId = null;
   let activeCustomWorkers = null;
 
   const nodePositionMap = {};
@@ -283,8 +283,8 @@ export function createSimulationEngine() {
     if (activeCustomWorkers && Array.isArray(activeCustomWorkers) && activeCustomWorkers.length > 0) {
       loadCustomWorkers(activeCustomWorkers);
     } else {
-      workers = JSON.parse(JSON.stringify(INITIAL_WORKERS));
-      workerRoutes = computeAllWorkerRoutes(workers, tunnelStates);
+      workers = [];
+      workerRoutes = {};
     }
     alerts = [];
 
