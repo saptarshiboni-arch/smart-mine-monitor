@@ -114,6 +114,7 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
   const [inspectedTunnel, setInspectedTunnel] = useState(null);
   const [inspectedNode, setInspectedNode] = useState(null);
   const [inspectedWorker, setInspectedWorker] = useState(null);
+  const [workerAnchorPos, setWorkerAnchorPos] = useState(null);
   const [inspectedStation, setInspectedStation] = useState(null);
   const [selectedRouteWorkerId, setSelectedRouteWorkerId] = useState(null);
 
@@ -922,6 +923,13 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
                     const handleWorkerSelect = (e) => {
                       e.stopPropagation();
                       e.preventDefault();
+                      // Compute screen-space coordinates of clicked miner icon
+                      const rect = e.currentTarget?.getBoundingClientRect?.();
+                      if (rect) {
+                        setWorkerAnchorPos({ x: rect.right, y: rect.top });
+                      } else if (e.clientX && e.clientY) {
+                        setWorkerAnchorPos({ x: e.clientX, y: e.clientY });
+                      }
                       setInspectedWorker(w);
                       setSelectedWorker?.(w);
                       setSelectedRouteWorkerId(w.id);
@@ -1103,8 +1111,10 @@ export default function MineMap({ compact = false, height = 620, onSelectNode, o
           <MinerDetailPopup
             worker={workers.find((w) => w.id === inspectedWorker.id) || inspectedWorker}
             route={workerRoutes[inspectedWorker.id] || activeRoute}
+            anchorPosition={workerAnchorPos}
             onClose={() => {
               setInspectedWorker(null);
+              setWorkerAnchorPos(null);
               setSelectedWorker?.(null);
             }}
             onHighlightRoute={(workerId) => {
