@@ -547,10 +547,39 @@ export function createSimulationEngine(initialWorkers = null) {
     return workers;
   }
 
+  function updateNodePositions(junctions = [], shafts = []) {
+    if (Array.isArray(junctions)) {
+      junctions.forEach(j => {
+        if (j && j.id) nodePositionMap[j.id] = { x: j.x, y: j.y };
+      });
+    }
+    if (Array.isArray(shafts)) {
+      shafts.forEach(s => {
+        if (s && s.id) nodePositionMap[s.id] = { x: s.x, y: s.y };
+      });
+    }
+    // Also sync worker coordinates if their assigned node exists
+    workers.forEach(w => {
+      if (nodePositionMap[w.nodeId]) {
+        w.xCoord = nodePositionMap[w.nodeId].x;
+        w.yCoord = nodePositionMap[w.nodeId].y;
+      }
+    });
+  }
+
   function addWorker(workerData) {
     const nextNum = workers.length + 1;
-    const defaultNodes = ['J-05', 'J-06', 'J-08', 'J-03', 'J-04', 'J-01', 'J-02', 'J-12', 'J-13', 'J7', 'J8', 'J9', 'J10', 'J11', 'J12', 'J13', 'J14'];
-    const nodeId = workerData.nodeId || defaultNodes[(nextNum - 1) % defaultNodes.length];
+    let nodeId = workerData.nodeId;
+    if (!nodeId || !nodePositionMap[nodeId]) {
+      const keys = Object.keys(nodePositionMap);
+      if (keys.length > 0) {
+        nodeId = (workerData.nodeId && keys.includes(workerData.nodeId))
+          ? workerData.nodeId
+          : keys[(nextNum - 1) % keys.length];
+      } else {
+        nodeId = 'J-05';
+      }
+    }
     const zone = workerData.zone || NODE_TO_ZONE[nodeId] || 'B';
     const coords = nodePositionMap[nodeId] || { x: 400, y: 220 };
 
@@ -600,5 +629,6 @@ export function createSimulationEngine(initialWorkers = null) {
     addWorker,
     removeWorker,
     clearAllWorkers,
+    updateNodePositions,
   };
 }

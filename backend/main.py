@@ -852,21 +852,8 @@ def analyze_with_ai_model(file_path: str, filename: str, mine_name: str, seam: s
                     "h": 40
                 })
 
+            # Personnel: Clean slate — populated strictly via operator/admin input
             miners = []
-            for idx in range(min(8, len(junctions))):
-                j = junctions[idx % len(junctions)]
-                miners.append({
-                    "id": f"W-{str(idx+1).zfill(3)}",
-                    "name": f"Miner {idx+1}",
-                    "role": "Continuous Miner Operator" if idx == 0 else "Face Worker",
-                    "zone": j["zone"],
-                    "nodeId": j["id"],
-                    "helmet": "Connected",
-                    "status": "SAFE",
-                    "movement": "Normal",
-                    "heartRate": 74 + (idx * 3) % 12,
-                    "tagBattery": 90
-                })
 
             sensors = []
             for idx in range(min(24, len(junctions))):

@@ -123,12 +123,8 @@ export function loadSavedCustomMap() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.roadways && parsed.junctions) {
-          const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
-          if (Array.isArray(parsed.miners)) {
-            parsed.miners = parsed.miners.filter(m => !legacyNames.has(m.name));
-          } else {
-            parsed.miners = [];
-          }
+          parsed.miners = [];
+          if (parsed.counts) parsed.counts.miners = 0;
           return parsed;
         }
       }
@@ -146,10 +142,8 @@ export function saveCustomMap(mapData) {
   try {
     if (typeof window !== 'undefined') {
       const sanitized = { ...mapData };
-      if (Array.isArray(sanitized.miners)) {
-        const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
-        sanitized.miners = sanitized.miners.filter(m => !legacyNames.has(m.name));
-      }
+      sanitized.miners = [];
+      if (sanitized.counts) sanitized.counts.miners = 0;
       localStorage.setItem(STORAGE_CUSTOM_MAP, JSON.stringify(sanitized));
 
       // Also append to saved mines list

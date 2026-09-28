@@ -53,12 +53,20 @@ function parseInitialSession() {
         }
       }
 
-      const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+      const isDummyMiner = (m) => {
+        if (!m) return true;
+        const name = (m.name || '').trim();
+        const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+        if (legacyNames.has(name)) return true;
+        if (/^Miner\s+\d+$/i.test(name)) return true;
+        if (/^W-\d+$/i.test(m.id) && !m.phone && !m.name) return true;
+        return false;
+      };
 
       if (sessionParam) {
         const decoded = JSON.parse(decodeURIComponent(sessionParam));
         if (decoded && Array.isArray(decoded.miners)) {
-          decoded.miners = decoded.miners.filter(m => !legacyNames.has(m.name));
+          decoded.miners = decoded.miners.filter(m => !isDummyMiner(m));
         }
         localStorage.setItem('mineguard_active_session', JSON.stringify(decoded));
         const cleanUrl = window.location.pathname + window.location.hash.split('?')[0];
@@ -70,7 +78,7 @@ function parseInitialSession() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.miners)) {
-          parsed.miners = parsed.miners.filter(m => !legacyNames.has(m.name));
+          parsed.miners = parsed.miners.filter(m => !isDummyMiner(m));
           localStorage.setItem('mineguard_active_session', JSON.stringify(parsed));
         }
         return parsed;
@@ -195,36 +203,23 @@ export const MineProvider = ({ children }) => {
   const setCustomActiveMap = useCallback((newMap) => {
     setActiveMap(newMap);
     saveCustomMap(newMap);
-    // Never overwrite registered personnel with map blueprint presets
-    const hasAdminMiners = adminSession && Array.isArray(adminSession.miners) && adminSession.miners.length > 0;
-    if (!hasAdminMiners && newMap.miners && Array.isArray(newMap.miners) && newMap.miners.length > 0) {
-      const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
-      const filtered = newMap.miners.filter(m => !legacyNames.has(m.name));
-      if (filtered.length > 0) {
-        engine.loadCustomWorkers(filtered);
-        setMineState(engine.getState());
-      }
+    if (newMap && engine?.updateNodePositions) {
+      engine.updateNodePositions(newMap.junctions, newMap.shafts);
     }
     addToast({
       title: '2D Mine Map Loaded',
       message: `Active map: ${newMap.mineName || 'Custom Blueprint Map'}.`,
       type: 'success',
     });
-  }, [adminSession, engine, addToast]);
+  }, [engine, addToast]);
 
   const activateMap = useCallback(async (mapId) => {
     try {
       const res = await activateMapBackend(mapId);
       if (res && res.activeMap) {
         setActiveMap(res.activeMap);
-        const hasAdminMiners = adminSession && Array.isArray(adminSession.miners) && adminSession.miners.length > 0;
-        if (!hasAdminMiners && res.activeMap.miners && Array.isArray(res.activeMap.miners) && res.activeMap.miners.length > 0) {
-          const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
-          const filtered = res.activeMap.miners.filter(m => !legacyNames.has(m.name));
-          if (filtered.length > 0) {
-            engine.loadCustomWorkers(filtered);
-            setMineState(engine.getState());
-          }
+        if (res.activeMap && engine?.updateNodePositions) {
+          engine.updateNodePositions(res.activeMap.junctions, res.activeMap.shafts);
         }
         addToast({
           title: '2D Mine Map Activated',
@@ -241,7 +236,7 @@ export const MineProvider = ({ children }) => {
         type: 'warning',
       });
     }
-  }, [adminSession, engine, addToast]);
+  }, [engine, addToast]);
 
   // Sync active map from backend on initial mount
   useEffect(() => {
@@ -249,20 +244,20 @@ export const MineProvider = ({ children }) => {
     fetchActiveMapBackend().then((map) => {
       if (isMounted && map) {
         setActiveMap(map);
-        const hasAdminMiners = adminSession && Array.isArray(adminSession.miners) && adminSession.miners.length > 0;
-        const currentWorkers = engine.getState().workers;
-        if (!hasAdminMiners && currentWorkers.length === 0 && map.miners && Array.isArray(map.miners) && map.miners.length > 0) {
-          const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
-          const filtered = map.miners.filter(m => !legacyNames.has(m.name));
-          if (filtered.length > 0) {
-            engine.loadCustomWorkers(filtered);
-            setMineState(engine.getState());
-          }
+        if (engine?.updateNodePositions) {
+          engine.updateNodePositions(map.junctions, map.shafts);
         }
       }
     }).catch(() => {});
     return () => { isMounted = false; };
-  }, [adminSession, engine]);
+  }, [engine]);
+
+  // Keep engine node position map in sync with current active CAD/blueprint map
+  useEffect(() => {
+    if (activeMap && engine?.updateNodePositions) {
+      engine.updateNodePositions(activeMap.junctions, activeMap.shafts);
+    }
+  }, [activeMap, engine]);
 
   const resetToDefaultMap = useCallback(() => {
     clearCustomMap();

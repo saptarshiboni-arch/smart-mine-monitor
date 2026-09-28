@@ -657,7 +657,7 @@
               isSingleLine: true,
               analyzedAt: new Date().toISOString(),
               map: { width: 1000, height: 700, scale: { detected: true, ratio: '1:500m', label: 'CAD 1:500m (Verified)' }, singleLine: true },
-              counts: { roadways: 24, junctions: 20, pillars: 16, panels: 4, shafts: 3, refugeChambers: 3, monitoringStations: 4, sensors: 24, miners: 8, airflowRoutes: 5, unverifiedFeatures: 0 },
+              counts: { roadways: 24, junctions: 20, pillars: 16, panels: 4, shafts: 3, refugeChambers: 3, monitoringStations: 4, sensors: 24, miners: 0, airflowRoutes: 5, unverifiedFeatures: 0 },
               junctions: [
                 { id: "J-01", x: 918, y: 132, zone: "D", label: "J-01 Junction", type: "junction" },
                 { id: "J-02", x: 930, y: 183, zone: "D", label: "J-02 Junction", type: "junction" },

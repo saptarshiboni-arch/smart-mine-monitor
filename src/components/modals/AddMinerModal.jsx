@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMine } from '../../context/MineContext';
 import { UserPlus, X, HardHat, Radio, ShieldCheck, MapPin, Activity, Check } from 'lucide-react';
 import { MINE_NODES } from '../../data/mineData.js';
@@ -35,14 +35,20 @@ export const AddMinerModal = () => {
   const [helmet, setHelmet] = useState('Connected');
   const [errorMsg, setErrorMsg] = useState('');
 
-  if (!isAddMinerModalOpen) return null;
-
   // Available nodes for chosen zone (dynamically derived from activeMap junctions if present)
   const mapJunctionsForZone = activeMap?.junctions
     ? activeMap.junctions.filter((j) => (j.zone || 'A') === zone).map((j) => j.id)
     : [];
   const currentZoneDef = ZONE_OPTIONS.find((z) => z.id === zone) || ZONE_OPTIONS[1];
   const availableNodes = mapJunctionsForZone.length > 0 ? mapJunctionsForZone : currentZoneDef.nodes;
+
+  useEffect(() => {
+    if (availableNodes.length > 0 && !availableNodes.includes(nodeId)) {
+      setNodeId(availableNodes[0]);
+    }
+  }, [availableNodes, nodeId]);
+
+  if (!isAddMinerModalOpen) return null;
 
   const handleZoneChange = (newZone) => {
     setZone(newZone);
