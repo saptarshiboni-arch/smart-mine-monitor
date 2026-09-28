@@ -7,7 +7,7 @@ import { calculateAIPrediction } from './aiPrediction.js';
 
 const HISTORY_LENGTH = 30;
 
-export function createSimulationEngine() {
+export function createSimulationEngine(initialWorkers = null) {
   // Deep clone initial data
   let sensors = JSON.parse(JSON.stringify(INITIAL_SENSORS));
   let workers = [];
@@ -31,6 +31,10 @@ export function createSimulationEngine() {
   const nodePositionMap = {};
   MINE_NODES.forEach(n => { nodePositionMap[n.id] = { x: n.x, y: n.y }; });
   MINE_EXITS.forEach(e => { nodePositionMap[e.id] = { x: e.x, y: e.y }; });
+
+  if (initialWorkers && Array.isArray(initialWorkers)) {
+    loadCustomWorkers(initialWorkers);
+  }
 
 
   // Initialize sensor history
@@ -279,12 +283,13 @@ export function createSimulationEngine() {
       }
     });
 
-    // Reset workers
+    // Reset workers (only restore user-input miners, never random INITIAL_WORKERS)
     if (activeCustomWorkers && Array.isArray(activeCustomWorkers) && activeCustomWorkers.length > 0) {
       loadCustomWorkers(activeCustomWorkers);
     } else {
       workers = [];
       workerRoutes = {};
+      activeRouteWorkerId = null;
     }
     alerts = [];
 
@@ -467,7 +472,15 @@ export function createSimulationEngine() {
   };
 
   function loadCustomWorkers(customWorkers) {
-    if (!Array.isArray(customWorkers) || customWorkers.length === 0) return;
+    if (!Array.isArray(customWorkers)) return;
+
+    if (customWorkers.length === 0) {
+      workers = [];
+      activeCustomWorkers = [];
+      workerRoutes = {};
+      activeRouteWorkerId = null;
+      return;
+    }
 
     // Deduplicate by worker ID to prevent the same person appearing twice
     const seen = new Set();
@@ -483,7 +496,7 @@ export function createSimulationEngine() {
     workers = uniqueWorkers.map((cw, idx) => {
       const nodeId = cw.nodeId || defaultNodes[idx % defaultNodes.length];
       const zone = cw.zone || NODE_TO_ZONE[nodeId] || ['A', 'B', 'C', 'D'][idx % 4];
-      const coords = nodePositionMap[nodeId] || { x: 230, y: 220 };
+      const coords = nodePositionMap[nodeId] || { x: cw.xCoord || 230, y: cw.yCoord || 220 };
       return {
         id: cw.id || `W-${String(idx + 1).padStart(3, '0')}`,
         name: cw.name || `Miner ${idx + 1}`,
@@ -491,32 +504,52 @@ export function createSimulationEngine() {
         role: cw.role || 'Continuous Miner Operator',
         zone: zone,
         nodeId: nodeId,
-        helmet: 'Connected',
-        status: 'SAFE',
-        movement: 'Normal',
-        heartRate: 70 + Math.floor(Math.random() * 12),
-        tagBattery: 88 + Math.floor(Math.random() * 10),
-        xCoord: coords.x,
-        yCoord: coords.y,
-        seamDepth: -120 - (idx * 15),
+        helmet: cw.helmet || 'Connected',
+        status: cw.status || 'SAFE',
+        movement: cw.movement || 'Normal',
+        heartRate: cw.heartRate || (70 + Math.floor(Math.random() * 12)),
+        tagBattery: cw.tagBattery || (88 + Math.floor(Math.random() * 10)),
+        xCoord: cw.xCoord || coords.x,
+        yCoord: cw.yCoord || coords.y,
+        seamDepth: cw.seamDepth || (-120 - (idx * 15)),
       };
     });
     workerRoutes = computeAllWorkerRoutes(workers, tunnelStates);
     if (!workers.find(w => w.id === activeRouteWorkerId)) {
-      activeRouteWorkerId = workers[0]?.id || 'W-001';
+      activeRouteWorkerId = workers[0]?.id || null;
     }
   }
 
   function resetCustomWorkers() {
     activeCustomWorkers = null;
-    workers = JSON.parse(JSON.stringify(INITIAL_WORKERS));
+    workers = [];
+    workerRoutes = {};
+    activeRouteWorkerId = null;
+  }
+
+  function removeWorker(workerId) {
+    workers = workers.filter(w => w.id !== workerId);
+    if (activeCustomWorkers) {
+      activeCustomWorkers = activeCustomWorkers.filter(w => w.id !== workerId);
+    }
     workerRoutes = computeAllWorkerRoutes(workers, tunnelStates);
-    activeRouteWorkerId = 'W-003';
+    if (activeRouteWorkerId === workerId) {
+      activeRouteWorkerId = workers[0]?.id || null;
+    }
+    return workers;
+  }
+
+  function clearAllWorkers() {
+    workers = [];
+    activeCustomWorkers = null;
+    workerRoutes = {};
+    activeRouteWorkerId = null;
+    return workers;
   }
 
   function addWorker(workerData) {
     const nextNum = workers.length + 1;
-    const defaultNodes = ['J7', 'J8', 'J9', 'J10', 'J11', 'J12', 'J13', 'J14'];
+    const defaultNodes = ['J-05', 'J-06', 'J-08', 'J-03', 'J-04', 'J-01', 'J-02', 'J-12', 'J-13', 'J7', 'J8', 'J9', 'J10', 'J11', 'J12', 'J13', 'J14'];
     const nodeId = workerData.nodeId || defaultNodes[(nextNum - 1) % defaultNodes.length];
     const zone = workerData.zone || NODE_TO_ZONE[nodeId] || 'B';
     const coords = nodePositionMap[nodeId] || { x: 400, y: 220 };
@@ -565,5 +598,7 @@ export function createSimulationEngine() {
     loadCustomWorkers,
     resetCustomWorkers,
     addWorker,
+    removeWorker,
+    clearAllWorkers,
   };
 }

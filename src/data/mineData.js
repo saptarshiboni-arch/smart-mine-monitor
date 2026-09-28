@@ -1271,8 +1271,8 @@ function createSensors() {
   }));
 }
 
-// ─── Initial Worker Configuration ───────────────────────────────────────
-export const INITIAL_WORKERS = [
+// ─── Sample Demo Workers (Reference Only — Not auto-loaded) ───────────────
+export const SAMPLE_DEMO_WORKERS = [
   {
     "id": "W-001",
     "name": "Rahul Das",
@@ -1450,6 +1450,9 @@ export const INITIAL_WORKERS = [
     "seamDepth": -246
   }
 ];
+
+// Active Initial Workers: Clean slate — only user-input miners appear on map
+export const INITIAL_WORKERS = [];
 
 export const INITIAL_SENSORS = createSensors();
 

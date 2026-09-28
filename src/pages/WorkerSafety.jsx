@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   UserPlus,
+  Trash2,
 } from 'lucide-react';
 
 export default function WorkerSafety() {
@@ -23,9 +24,11 @@ export default function WorkerSafety() {
     setSelectedWorker,
     emergencyModeActive,
     setIsAddMinerModalOpen,
+    removeMiner,
   } = useMine();
 
-  const [activeWorker, setActiveWorker] = useState(selectedWorker || workers[0]);
+  const [activeWorkerId, setActiveWorkerId] = useState(null);
+  const activeWorker = workers.find((w) => w.id === (activeWorkerId || selectedWorker?.id)) || workers[0] || null;
 
   const assignedRoute = activeWorker ? workerRoutes[activeWorker.id] : null;
 
@@ -70,6 +73,23 @@ export default function WorkerSafety() {
       key: 'status',
       label: 'Evacuation State',
       render: (val) => <StatusBadge status={val} />,
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      render: (_, row) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            removeMiner(row.id);
+          }}
+          className="p-1 rounded text-mine-text-secondary hover:text-status-critical hover:bg-status-critical-bg/50 transition cursor-pointer"
+          title={`Remove miner ${row.name || row.id}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
     },
   ];
 
@@ -121,18 +141,38 @@ export default function WorkerSafety() {
             </button>
           </div>
           <span className="text-xs font-mono text-mine-text-secondary">
-            Click row to inspect miner telemetry
+            {workers.length > 0 ? 'Click row to inspect miner telemetry' : 'Only manually input miners are displayed'}
           </span>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={workers}
-          onRowClick={(row) => {
-            setActiveWorker(row);
-            setSelectedWorker(row);
-          }}
-        />
+        {workers.length === 0 ? (
+          <div className="p-8 rounded-lg border border-dashed border-mine-border text-center bg-mine-surface-alt/40 space-y-3">
+            <HardHat className="h-8 w-8 text-mine-text-secondary/50 mx-auto" />
+            <div>
+              <p className="text-sm font-semibold text-mine-text-primary">No Miners Deployed Underground</p>
+              <p className="text-xs text-mine-text-secondary mt-1 max-w-md mx-auto">
+                Only miners you manually input will appear on the map and safety dashboard. Click <strong>&quot;+ Add Miner&quot;</strong> above to deploy crew members to specific junctions.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddMinerModalOpen(true)}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-status-attention text-white font-semibold shadow hover:bg-status-attention/90 transition"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>Deploy First Miner</span>
+            </button>
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={workers}
+            onRowClick={(row) => {
+              setActiveWorkerId(row.id);
+              setSelectedWorker(row);
+            }}
+          />
+        )}
       </div>
 
       {/* Selected Worker Detailed Card */}

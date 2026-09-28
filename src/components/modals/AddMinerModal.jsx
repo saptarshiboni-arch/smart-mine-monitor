@@ -22,7 +22,7 @@ const ZONE_OPTIONS = [
 ];
 
 export const AddMinerModal = () => {
-  const { isAddMinerModalOpen, setIsAddMinerModalOpen, addMiner, workers } = useMine();
+  const { isAddMinerModalOpen, setIsAddMinerModalOpen, addMiner, workers, activeMap } = useMine();
 
   const nextWorkerNum = workers ? workers.length + 1 : 1;
   const suggestedId = `W-${String(nextWorkerNum).padStart(3, '0')}`;
@@ -37,15 +37,22 @@ export const AddMinerModal = () => {
 
   if (!isAddMinerModalOpen) return null;
 
-  // Available nodes for chosen zone
+  // Available nodes for chosen zone (dynamically derived from activeMap junctions if present)
+  const mapJunctionsForZone = activeMap?.junctions
+    ? activeMap.junctions.filter((j) => (j.zone || 'A') === zone).map((j) => j.id)
+    : [];
   const currentZoneDef = ZONE_OPTIONS.find((z) => z.id === zone) || ZONE_OPTIONS[1];
-  const availableNodes = currentZoneDef.nodes;
+  const availableNodes = mapJunctionsForZone.length > 0 ? mapJunctionsForZone : currentZoneDef.nodes;
 
   const handleZoneChange = (newZone) => {
     setZone(newZone);
+    const zMapNodes = activeMap?.junctions
+      ? activeMap.junctions.filter((j) => (j.zone || 'A') === newZone).map((j) => j.id)
+      : [];
     const zDef = ZONE_OPTIONS.find((z) => z.id === newZone);
-    if (zDef && zDef.nodes.length > 0) {
-      setNodeId(zDef.nodes[0]);
+    const nextNodes = zMapNodes.length > 0 ? zMapNodes : (zDef?.nodes || []);
+    if (nextNodes.length > 0) {
+      setNodeId(nextNodes[0]);
     }
   };
 

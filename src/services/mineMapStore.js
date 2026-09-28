@@ -36,7 +36,7 @@ export function getDefaultMineMap() {
       refugeChambers: 3,
       monitoringStations: 4,
       sensors: INITIAL_SENSORS.length,
-      miners: INITIAL_WORKERS.length,
+      miners: 0,
       airflowRoutes: VENTILATION_PATHS.length,
       unverifiedFeatures: 0,
     },
@@ -101,7 +101,7 @@ export function getDefaultMineMap() {
       { id: 'MS-04', name: 'Station MS-04 (Zone D)', nodeId: 'J-01', zone: 'D', risk: 'LOW', lastUpdate: 'Just now', sensors: ['S-19', 'S-20', 'S-21', 'S-22'] },
     ],
     sensors: INITIAL_SENSORS,
-    miners: INITIAL_WORKERS,
+    miners: [],
     airflow: VENTILATION_PATHS.map((v, idx) => ({
       id: `AIR-${idx + 1}`,
       from: v.from,
@@ -123,6 +123,12 @@ export function loadSavedCustomMap() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.roadways && parsed.junctions) {
+          const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+          if (Array.isArray(parsed.miners)) {
+            parsed.miners = parsed.miners.filter(m => !legacyNames.has(m.name));
+          } else {
+            parsed.miners = [];
+          }
           return parsed;
         }
       }
@@ -139,7 +145,12 @@ export function loadSavedCustomMap() {
 export function saveCustomMap(mapData) {
   try {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_CUSTOM_MAP, JSON.stringify(mapData));
+      const sanitized = { ...mapData };
+      if (Array.isArray(sanitized.miners)) {
+        const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+        sanitized.miners = sanitized.miners.filter(m => !legacyNames.has(m.name));
+      }
+      localStorage.setItem(STORAGE_CUSTOM_MAP, JSON.stringify(sanitized));
 
       // Also append to saved mines list
       const savedMines = getSavedMinesList();

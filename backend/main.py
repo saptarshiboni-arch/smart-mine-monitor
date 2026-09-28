@@ -361,6 +361,24 @@ def clear_hardware_nodes():
             os.remove(HARDWARE_NODES_FILE)
         except Exception:
             pass
+    try:
+        with open(HARDWARE_NODES_FILE, "w", encoding="utf-8") as f:
+            json.dump({}, f)
+    except Exception:
+        pass
+
+
+def delete_hardware_node(node_id: str) -> bool:
+    """Deletes a specific hardware node record from persistent storage."""
+    nodes = load_hardware_nodes()
+    if node_id in nodes:
+        del nodes[node_id]
+        temp_file = HARDWARE_NODES_FILE + ".tmp"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(nodes, f, indent=2, ensure_ascii=False)
+        shutil.move(temp_file, HARDWARE_NODES_FILE)
+        return True
+    return False
 
 
 def hardware_to_ml_telemetry(payload: HardwareSensorIngestPayload) -> HardwareTelemetryInput:
@@ -602,6 +620,17 @@ def reset_hardware_sensors():
     """
     clear_hardware_nodes()
     return {"status": "ok", "message": "All hardware node records cleared"}
+
+
+@app.delete("/api/sensors/data/{node_id}", tags=["Hardware Ingestion"])
+def delete_single_hardware_sensor(node_id: str):
+    """
+    Deletes a specific registered hardware sensor node.
+    """
+    success = delete_hardware_node(node_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
+    return {"status": "ok", "message": f"Hardware sensor node '{node_id}' deleted"}
 
 
 # ─── MINE BLUEPRINT CV/ML PERSISTENT STORAGE & REST APIS ─────────────
@@ -1295,7 +1324,8 @@ def analyze_blueprint_endpoint(data: BlueprintAnalysisInput):
         "mineName": data.mine_name or "Deep Rock Colliery",
         "seam": data.seam or "Seam 4",
         "map": {"width": 1000, "height": 700, "scale": {"detected": True, "ratio": "1:500m", "label": "100m"}},
-        "counts": {"roadways": 24, "junctions": 16, "pillars": 8, "panels": 4, "shafts": 4, "refugeChambers": 1, "monitoringStations": 5, "sensors": 20, "miners": 8, "airflowRoutes": 8, "unverifiedFeatures": 0},
+        "counts": {"roadways": 24, "junctions": 16, "pillars": 8, "panels": 4, "shafts": 4, "refugeChambers": 1, "monitoringStations": 5, "sensors": 20, "miners": 0, "airflowRoutes": 8, "unverifiedFeatures": 0},
+        "miners": [],
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 

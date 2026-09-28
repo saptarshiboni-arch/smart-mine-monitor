@@ -421,7 +421,25 @@ def reset_hardware_sensors():
             os.remove(HARDWARE_NODES_FILE)
         except Exception:
             pass
+    try:
+        with open(HARDWARE_NODES_FILE, "w", encoding="utf-8") as f:
+            json.dump({}, f)
+    except Exception:
+        pass
     return {"status": "ok", "message": "All hardware node records cleared"}
+
+
+@app.delete("/api/sensors/data/{node_id}", tags=["Hardware Ingestion"])
+def delete_single_hardware_sensor(node_id: str):
+    nodes = load_hardware_nodes()
+    if node_id not in nodes:
+        raise HTTPException(status_code=404, detail=f"Hardware sensor node '{node_id}' not found")
+    del nodes[node_id]
+    temp_file = str(HARDWARE_NODES_FILE) + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(nodes, f, indent=2, ensure_ascii=False)
+    shutil.move(temp_file, str(HARDWARE_NODES_FILE))
+    return {"status": "ok", "message": f"Hardware sensor node '{node_id}' deleted"}
 
 
 if __name__ == "__main__":

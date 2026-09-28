@@ -771,37 +771,8 @@ def analyze_mine_blueprint_cv(file_bytes: bytes, filename: str, mine_name: str =
         {"id": "PANEL-04", "name": "Zone D • Development Face (-290m)", "zone": "D", "x": int(target_w * 0.76), "y": 140, "w": int(target_w * 0.20), "h": int(target_h * 0.65), "color": "#10B981"},
     ]
 
-    # 13. Dynamic Miner Placement mapped directly to detected junctions
-    worker_names = [
-        ("Rajesh Kumar", "Face Worker"),
-        ("Suresh Mahato", "Support Specialist"),
-        ("Amit Singh", "Overman"),
-        ("Pradeep Yadav", "Continuous Miner Op"),
-        ("Vikram Das", "Mine Electrician"),
-        ("Manoj Oraon", "Ventilation Tech"),
-        ("Dinesh Tudu", "Shotfirer"),
-        ("Bablu Hansda", "Safety Inspector"),
-    ]
-
+    # 13. Miners roster: initially empty; populated only by operator/admin input
     miners = []
-    for idx, (w_name, role) in enumerate(worker_names):
-        assigned_j = junctions[idx % len(junctions)]
-        w_id = f"W-{str(idx + 1).zfill(3)}"
-        miners.append({
-            "id": w_id,
-            "name": w_name,
-            "role": role,
-            "zone": assigned_j["zone"],
-            "nodeId": assigned_j["id"],
-            "helmet": "Connected",
-            "status": "SAFE",
-            "movement": "Normal",
-            "heartRate": 68 + (idx * 3) % 15,
-            "tagBattery": 85 + (idx * 2) % 15,
-            "xCoord": assigned_j["x"],
-            "yCoord": assigned_j["y"],
-            "seamDepth": -120 - (idx * 18),
-        })
 
     # 14. Dynamic Sensor Network (24 Sensors mapped along detected junctions)
     sensors = []

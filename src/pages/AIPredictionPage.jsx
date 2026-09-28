@@ -49,6 +49,7 @@ export default function AIPredictionPage() {
     sendHardwareTelemetry,
     resetHardwareSensorNodes,
     deleteHardwareSensorNode,
+    deleteHardwareNode,
   } = useMine();
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showArchitectureGuide, setShowArchitectureGuide] = useState(false);
@@ -408,11 +409,11 @@ export default function AIPredictionPage() {
             {Object.keys(hardwareNodes).length > 0 && (
               <button
                 type="button"
-                onClick={resetHardwareSensorNodes}
-                className="p-1 rounded text-mine-text-secondary hover:text-status-critical transition"
-                title="Clear received hardware nodes"
+                onClick={() => resetHardwareSensorNodes()}
+                className="p-1.5 rounded text-mine-text-secondary hover:text-status-critical hover:bg-status-critical-bg/50 transition cursor-pointer"
+                title="Clear all received hardware nodes"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -441,7 +442,7 @@ export default function AIPredictionPage() {
                   <th className="py-2 px-3">ML Risk Assessment</th>
                   <th className="py-2 px-3">Confidence</th>
                   <th className="py-2 px-3">Last Ping</th>
-                  <th className="py-2 px-3 text-right">Action</th>
+                  <th className="py-2 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-mine-border">
@@ -481,9 +482,9 @@ export default function AIPredictionPage() {
                       <td className="py-2 px-3 text-right">
                         <button
                           type="button"
-                          title={`Delete ${node.node_id}`}
-                          onClick={() => deleteHardwareSensorNode(node.node_id)}
-                          className="p-1 rounded text-mine-text-secondary hover:text-status-critical hover:bg-status-critical/10 transition"
+                          onClick={() => (deleteHardwareNode ? deleteHardwareNode(node.node_id) : deleteHardwareSensorNode?.(node.node_id))}
+                          className="p-1 rounded text-mine-text-secondary hover:text-status-critical hover:bg-status-critical-bg/50 transition cursor-pointer"
+                          title={`Delete node ${node.node_id}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
