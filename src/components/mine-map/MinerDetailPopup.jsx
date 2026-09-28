@@ -593,7 +593,6 @@ export default function MinerDetailPopup({ worker, route, anchorPosition, onClos
           Close
         </button>
       </div>
-      </div>
     </div>
   );
 
