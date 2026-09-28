@@ -195,10 +195,28 @@ export async function sendHardwareTelemetry(payload, baseUrl = DEFAULT_BACKEND_U
  * Clears all active hardware sensor nodes from the backend
  */
 export async function resetHardwareSensorNodes(baseUrl = DEFAULT_BACKEND_URL) {
+  const url = (typeof baseUrl === 'string' && baseUrl.trim().length > 0) ? baseUrl.trim() : DEFAULT_BACKEND_URL;
   try {
-    const res = await fetch(`${baseUrl}/api/sensors/data`, { method: 'DELETE' });
+    const res = await fetch(`${url}/api/sensors/data`, { method: 'DELETE' });
     if (res.ok) return await res.json();
-  } catch (err) {}
+  } catch (err) {
+    console.error('Failed to reset hardware sensor nodes:', err);
+  }
+  return null;
+}
+
+/**
+ * Deletes an individual hardware sensor node by its node_id
+ */
+export async function deleteHardwareNode(nodeId, baseUrl = DEFAULT_BACKEND_URL) {
+  if (!nodeId) return null;
+  const url = (typeof baseUrl === 'string' && baseUrl.trim().length > 0) ? baseUrl.trim() : DEFAULT_BACKEND_URL;
+  try {
+    const res = await fetch(`${url}/api/sensors/data/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.error(`Failed to delete hardware node ${nodeId}:`, err);
+  }
   return null;
 }
 

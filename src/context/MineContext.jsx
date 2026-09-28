@@ -12,7 +12,8 @@ import {
   buildMLTelemetryPayload,
   fetchHardwareSensorData,
   sendHardwareTelemetry,
-  resetHardwareSensorNodes,
+  resetHardwareSensorNodes as apiResetHardwareSensorNodes,
+  deleteHardwareNode as apiDeleteHardwareNode,
 } from '../services/mlAdapter.js';
 import { setLiveMLPrediction } from '../services/aiPrediction.js';
 import { MINE_TUNNELS, MINE_NODES } from '../data/mineData.js';
@@ -36,12 +37,60 @@ const INITIAL_STATUTORY_INCIDENTS = [
   { id: 'INC-2024-083', date: '2026-08-14', time: '08:40', location: 'Zone A — Intake Shaft J1', event: 'Routine DGMS statutory quarterly strata audit', risk: 'LOW', action: 'All extensometer benchmarks verified nominal', status: 'Resolved' },
 ];
 
+// Parse admin session from URL parameter (?session=...) or localStorage
+function parseInitialSession() {
+  try {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      let sessionParam = urlParams.get('session');
+
+      if (!sessionParam && window.location.hash.includes('session=')) {
+        const hashParts = window.location.hash.split('?');
+        if (hashParts.length > 1) {
+          const hashParams = new URLSearchParams(hashParts[1]);
+          sessionParam = hashParams.get('session');
+        }
+      }
+
+      const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+
+      if (sessionParam) {
+        const decoded = JSON.parse(decodeURIComponent(sessionParam));
+        if (decoded && Array.isArray(decoded.miners)) {
+          decoded.miners = decoded.miners.filter(m => !legacyNames.has(m.name));
+        }
+        localStorage.setItem('mineguard_active_session', JSON.stringify(decoded));
+        const cleanUrl = window.location.pathname + window.location.hash.split('?')[0];
+        window.history.replaceState({}, document.title, cleanUrl);
+        return decoded;
+      }
+
+      const raw = localStorage.getItem('mineguard_active_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.miners)) {
+          parsed.miners = parsed.miners.filter(m => !legacyNames.has(m.name));
+          localStorage.setItem('mineguard_active_session', JSON.stringify(parsed));
+        }
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse admin session:', e);
+  }
+  return null;
+}
+
 const MineContext = createContext(null);
 
 export const MineProvider = ({ children }) => {
+  // Active Admin Session (from Admin Registration & Blueprint Portal)
+  const [adminSession, setAdminSession] = useState(parseInitialSession);
+
   const engineRef = useRef(null);
   if (!engineRef.current) {
-    engineRef.current = createSimulationEngine();
+    const sessionMiners = adminSession?.miners && Array.isArray(adminSession.miners) ? adminSession.miners : [];
+    engineRef.current = createSimulationEngine(sessionMiners);
   }
   const engine = engineRef.current;
 
@@ -94,50 +143,15 @@ export const MineProvider = ({ children }) => {
     return INITIAL_STATUTORY_INCIDENTS;
   });
 
-  // Parse admin session from URL parameter (?session=...) or localStorage
-  const parseInitialSession = () => {
-    try {
-      if (typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        let sessionParam = urlParams.get('session');
-
-        if (!sessionParam && window.location.hash.includes('session=')) {
-          const hashParts = window.location.hash.split('?');
-          if (hashParts.length > 1) {
-            const hashParams = new URLSearchParams(hashParts[1]);
-            sessionParam = hashParams.get('session');
-          }
-        }
-
-        if (sessionParam) {
-          const decoded = JSON.parse(decodeURIComponent(sessionParam));
-          localStorage.setItem('mineguard_active_session', JSON.stringify(decoded));
-          const cleanUrl = window.location.pathname + window.location.hash.split('?')[0];
-          window.history.replaceState({}, document.title, cleanUrl);
-          return decoded;
-        }
-
-        const raw = localStorage.getItem('mineguard_active_session');
-        if (raw) return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.warn('Failed to parse admin session:', e);
-    }
-    return null;
-  };
-
-  // Active Admin Session (from Admin Registration & Blueprint Portal)
-  const [adminSession, setAdminSession] = useState(parseInitialSession);
-
-  // Sync custom workers into simulation engine when adminSession is loaded FROM STORAGE (initial mount only).
-  // We compare worker counts to avoid re-loading when a miner was just added via addMiner()
-  // (the engine already has the new worker; re-loading would duplicate it).
+  // Sync custom workers into simulation engine when adminSession changes
   useEffect(() => {
-    if (adminSession?.miners && Array.isArray(adminSession.miners) && adminSession.miners.length > 0) {
+    if (adminSession) {
+      const sessionMiners = Array.isArray(adminSession.miners) ? adminSession.miners : [];
       const engineWorkers = engine.getState().workers;
-      // Only reload from session if the engine hasn't already been populated with these workers
-      if (engineWorkers.length !== adminSession.miners.length) {
-        engine.loadCustomWorkers(adminSession.miners);
+      const sessionIds = sessionMiners.map(m => m.id || m.name).sort().join(',');
+      const engineIds = engineWorkers.map(w => w.id || w.name).sort().join(',');
+      if (sessionIds !== engineIds) {
+        engine.loadCustomWorkers(sessionMiners);
         setMineState(engine.getState());
       }
     }
@@ -180,25 +194,36 @@ export const MineProvider = ({ children }) => {
   const setCustomActiveMap = useCallback((newMap) => {
     setActiveMap(newMap);
     saveCustomMap(newMap);
-    if (newMap.miners && Array.isArray(newMap.miners) && newMap.miners.length > 0) {
-      engine.loadCustomWorkers(newMap.miners);
-      setMineState(engine.getState());
+    // Never overwrite registered personnel with map blueprint presets
+    const hasAdminMiners = adminSession && Array.isArray(adminSession.miners) && adminSession.miners.length > 0;
+    if (!hasAdminMiners && newMap.miners && Array.isArray(newMap.miners) && newMap.miners.length > 0) {
+      const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+      const filtered = newMap.miners.filter(m => !legacyNames.has(m.name));
+      if (filtered.length > 0) {
+        engine.loadCustomWorkers(filtered);
+        setMineState(engine.getState());
+      }
     }
     addToast({
       title: '2D Mine Map Loaded',
       message: `Active map: ${newMap.mineName || 'Custom Blueprint Map'}.`,
       type: 'success',
     });
-  }, [engine, addToast]);
+  }, [adminSession, engine, addToast]);
 
   const activateMap = useCallback(async (mapId) => {
     try {
       const res = await activateMapBackend(mapId);
       if (res && res.activeMap) {
         setActiveMap(res.activeMap);
-        if (res.activeMap.miners && Array.isArray(res.activeMap.miners) && res.activeMap.miners.length > 0) {
-          engine.loadCustomWorkers(res.activeMap.miners);
-          setMineState(engine.getState());
+        const hasAdminMiners = adminSession && Array.isArray(adminSession.miners) && adminSession.miners.length > 0;
+        if (!hasAdminMiners && res.activeMap.miners && Array.isArray(res.activeMap.miners) && res.activeMap.miners.length > 0) {
+          const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+          const filtered = res.activeMap.miners.filter(m => !legacyNames.has(m.name));
+          if (filtered.length > 0) {
+            engine.loadCustomWorkers(filtered);
+            setMineState(engine.getState());
+          }
         }
         addToast({
           title: '2D Mine Map Activated',
@@ -215,7 +240,7 @@ export const MineProvider = ({ children }) => {
         type: 'warning',
       });
     }
-  }, [engine, addToast]);
+  }, [adminSession, engine, addToast]);
 
   // Sync active map from backend on initial mount
   useEffect(() => {
@@ -223,14 +248,20 @@ export const MineProvider = ({ children }) => {
     fetchActiveMapBackend().then((map) => {
       if (isMounted && map) {
         setActiveMap(map);
-        if (map.miners && Array.isArray(map.miners) && map.miners.length > 0) {
-          engine.loadCustomWorkers(map.miners);
-          setMineState(engine.getState());
+        const hasAdminMiners = adminSession && Array.isArray(adminSession.miners) && adminSession.miners.length > 0;
+        const currentWorkers = engine.getState().workers;
+        if (!hasAdminMiners && currentWorkers.length === 0 && map.miners && Array.isArray(map.miners) && map.miners.length > 0) {
+          const legacyNames = new Set(["Rajesh Kumar", "Suresh Mahato", "Amit Singh", "Pradeep Yadav", "Vikram Das", "Manoj Oraon", "Dinesh Tudu", "Bablu Hansda"]);
+          const filtered = map.miners.filter(m => !legacyNames.has(m.name));
+          if (filtered.length > 0) {
+            engine.loadCustomWorkers(filtered);
+            setMineState(engine.getState());
+          }
         }
       }
     }).catch(() => {});
     return () => { isMounted = false; };
-  }, [engine]);
+  }, [adminSession, engine]);
 
   const resetToDefaultMap = useCallback(() => {
     clearCustomMap();
@@ -359,6 +390,50 @@ export const MineProvider = ({ children }) => {
 
     return newWorker;
   }, [engine, logIncident, addToast]);
+
+  const removeMiner = useCallback((workerId) => {
+    engine.removeWorker(workerId);
+    setMineState(engine.getState());
+
+    setAdminSession((prev) => {
+      const currentMiners = prev?.miners && Array.isArray(prev.miners) ? prev.miners : [];
+      const updatedMiners = currentMiners.filter(m => m.id !== workerId);
+      const updatedSession = prev ? { ...prev, miners: updatedMiners } : null;
+      try {
+        if (updatedSession) {
+          localStorage.setItem('mineguard_active_session', JSON.stringify(updatedSession));
+        }
+      } catch (e) {}
+      return updatedSession;
+    });
+
+    addToast({
+      title: 'Miner Removed',
+      message: `Miner ${workerId} removed from underground map.`,
+      type: 'info',
+    });
+  }, [engine, addToast]);
+
+  const clearAllMiners = useCallback(() => {
+    engine.clearAllWorkers();
+    setMineState(engine.getState());
+
+    setAdminSession((prev) => {
+      const updatedSession = prev ? { ...prev, miners: [] } : null;
+      try {
+        if (updatedSession) {
+          localStorage.setItem('mineguard_active_session', JSON.stringify(updatedSession));
+        }
+      } catch (e) {}
+      return updatedSession;
+    });
+
+    addToast({
+      title: 'Miners Cleared',
+      message: 'All miners removed from the map.',
+      type: 'info',
+    });
+  }, [engine, addToast]);
 
   // ML Backend Live State
   const [mlBackendState, setMlBackendState] = useState({
@@ -782,6 +857,64 @@ export const MineProvider = ({ children }) => {
     }
   }, [engine, mineState.sensors, logIncident]);
 
+  // ─── Real Hardware Ingestion Handlers (Clear & Delete Nodes) ──────────
+  const resetHardwareSensorNodes = useCallback(async () => {
+    // 1. Immediately clear local state so UI updates instantly
+    setHardwareNodes({});
+    setHardwareStatus({
+      isConnected: true,
+      lastReceived: new Date().toLocaleTimeString('en-IN'),
+      totalNodes: 0,
+      overallRisk: 'NORMAL',
+    });
+
+    // 2. Call backend to clear persistent hardware node records
+    try {
+      await apiResetHardwareSensorNodes();
+    } catch (err) {
+      console.error('Failed to reset hardware sensor nodes on backend:', err);
+    }
+
+    addToast({
+      title: 'Hardware Registry Cleared',
+      message: 'All registered hardware sensor nodes and telemetry have been cleared.',
+      type: 'info',
+    });
+  }, [addToast]);
+
+  const deleteHardwareNode = useCallback(async (nodeId) => {
+    if (!nodeId) return;
+
+    // 1. Immediately remove node from local state
+    setHardwareNodes(prev => {
+      const next = { ...prev };
+      delete next[nodeId];
+      return next;
+    });
+
+    setHardwareStatus(prev => {
+      const remainingCount = Math.max(0, (prev?.totalNodes || 1) - 1);
+      return {
+        ...prev,
+        totalNodes: remainingCount,
+        overallRisk: remainingCount === 0 ? 'NORMAL' : (prev?.overallRisk || 'NORMAL'),
+      };
+    });
+
+    // 2. Call backend to delete persistent record
+    try {
+      await apiDeleteHardwareNode(nodeId);
+    } catch (err) {
+      console.error(`Failed to delete hardware node ${nodeId} on backend:`, err);
+    }
+
+    addToast({
+      title: 'Node Removed',
+      message: `Hardware node ${nodeId} has been removed.`,
+      type: 'info',
+    });
+  }, [addToast]);
+
   const silenceSiren = useCallback(() => {
     audioSynth.stopSiren();
     setMineState(prev => ({ ...prev, sirenActive: false }));
@@ -845,12 +978,15 @@ export const MineProvider = ({ children }) => {
     hardwareStatus,
     sendHardwareTelemetry,
     resetHardwareSensorNodes,
+    deleteHardwareNode,
 
     // Actions
     activateMap,
     setCustomActiveMap,
     resetToDefaultMap,
     addMiner,
+    removeMiner,
+    clearAllMiners,
     addToast,
     removeToast,
     toggleTheme,

@@ -793,17 +793,8 @@ function generateOperationalLayers(normData) {
     });
   });
 
-  // 3. Miners (Simulated Personnel)
-  const miners = [
-    { id: 'M-001', name: 'Rajesh Kumar', zone: 'Panel 1', nodeId: 'J-07', role: 'Continuous Miner Operator', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 94, device: 'LoRa-UWB-001', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-002', name: 'Suresh Mahato', zone: 'Panel 1', nodeId: 'J-11', role: 'Roof Bolter Specialist', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 88, device: 'LoRa-UWB-002', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-003', name: 'Amit Singh', zone: 'Panel 2', nodeId: 'J-08', role: 'Overman / Safety Lead', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 92, device: 'LoRa-UWB-003', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-004', name: 'Pradeep Yadav', zone: 'Panel 2', nodeId: 'J-12', role: 'Continuous Miner Operator', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 96, device: 'LoRa-UWB-004', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-005', name: 'Vikram Das', zone: 'Panel 3', nodeId: 'J-09', role: 'Subsurface Electrician', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 78, device: 'LoRa-UWB-005', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-006', name: 'Manoj Oraon', zone: 'Panel 3', nodeId: 'J-13', role: 'Face Support Miner', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 84, device: 'LoRa-UWB-006', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-007', name: 'Dinesh Tudu', zone: 'Panel 4', nodeId: 'J-10', role: 'Blasting / Shotfirer', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 81, device: 'LoRa-UWB-007', lastUpdate: 'Just now', risk: 'LOW' },
-    { id: 'M-008', name: 'Bablu Hansda', zone: 'Panel 4', nodeId: 'J-14', role: 'Ventilation Inspector', status: 'ACTIVE', shift: 'Shift 1 (Day)', battery: 89, device: 'LoRa-UWB-008', lastUpdate: 'Just now', risk: 'LOW' },
-  ];
+  // 3. Miners (Simulated Personnel) - populated only via user input
+  const miners = [];
 
   // 4. Airflow & Ventilation Network
   const airflow = [

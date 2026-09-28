@@ -598,6 +598,8 @@
         }
 
         const generatedMap = analyzeData.generatedMap;
+        generatedMap.miners = [];
+        if (generatedMap.counts) generatedMap.counts.miners = 0;
         state.blueprint.customMap = generatedMap;
 
         try {
@@ -1285,17 +1287,20 @@
         nodesCount: parseInt(inputNodes.value, 10) || 24,
         frequency: selectFrequency.value || '10 Seconds (Standard)',
       },
-      miners: (state.miners && state.miners.length > 0 ? state.miners : SAMPLE_MINERS).map((m, idx) => {
+      miners: (state.miners && state.miners.length > 0 ? state.miners : []).map((m, idx) => {
         const jNodes = state.blueprint?.customMap?.junctions || [];
-        const assignedNode = jNodes.length > 0 ? jNodes[idx % jNodes.length].id : ['J-12', 'J-13', 'J-05', 'J-06', 'J-03', 'J-04', 'J-01', 'J-02'][idx % 8];
-        const assignedZone = jNodes.length > 0 ? (jNodes[idx % jNodes.length].zone || ['A', 'B', 'C', 'D'][idx % 4]) : ['A', 'B', 'C', 'D'][idx % 4];
+        const assignedNode = m.nodeId || (jNodes.length > 0 ? jNodes[idx % jNodes.length].id : ['J-05', 'J-06', 'J-08', 'J-01', 'J-02'][idx % 5]);
+        const assignedZone = m.zone || (jNodes.length > 0 ? (jNodes[idx % jNodes.length].zone || ['A', 'B', 'C', 'D'][idx % 4]) : ['A', 'B', 'C', 'D'][idx % 4]);
         return {
-          id: `W-${String(idx + 1).padStart(3, '0')}`,
+          id: m.id || `W-${String(idx + 1).padStart(3, '0')}`,
           name: m.name,
           phone: m.phone,
-          role: m.role,
+          role: m.role || 'Continuous Miner Operator',
           zone: assignedZone,
           nodeId: assignedNode,
+          helmet: 'Connected',
+          status: 'SAFE',
+          movement: 'Normal',
         };
       }),
       blueprint: {

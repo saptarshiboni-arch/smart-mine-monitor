@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   GripHorizontal,
   Compass,
+  Trash2,
 } from 'lucide-react';
 
 const BG_THEMES = [
@@ -57,7 +58,7 @@ const BG_THEMES = [
 /**
  * @param {{ worker: object, route: object|null, onClose: function, onHighlightRoute: function }} props
  */
-export default function MinerDetailPopup({ worker, route, onClose, onHighlightRoute }) {
+export default function MinerDetailPopup({ worker, route, onClose, onHighlightRoute, onRemoveWorker }) {
   if (!worker) return null;
 
   // Selected background theme (defaults to sleek Tactical Slate)
@@ -393,15 +394,26 @@ export default function MinerDetailPopup({ worker, route, onClose, onHighlightRo
             onClick={() => onHighlightRoute && onHighlightRoute(worker.id)}
             disabled={routeNodes.length === 0}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition shadow-lg
-                       bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-black active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                       bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-black active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             <Compass className="h-3.5 w-3.5" />
-            Highlight Route on Map
+            Highlight Route
           </button>
+          {onRemoveWorker && (
+            <button
+              type="button"
+              onClick={() => onRemoveWorker(worker.id)}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition flex items-center gap-1 cursor-pointer"
+              title="Remove this miner from underground map"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Remove</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-gray-300 transition"
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-gray-300 transition cursor-pointer"
           >
             Close
           </button>
